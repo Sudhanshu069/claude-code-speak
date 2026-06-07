@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find ~/.claude/projects -name *.json -o -name *.jsonl)",
+      "Bash(claude hooks:*)",
+      "Bash(chmod:*)",
+      "Bash(npm install:*)",
+      "Bash(node:*)",
+      "Bash(npm link:*)",
+      "Bash(sudo npm:*)",
+      "Bash(npm pack:*)",
+      "Bash(npx:*)",
+      "Bash(find ~/.claude/projects/ -name *.jsonl -maxdepth 3)",
+      "Bash(gtimeout 3 node bin/claude-speak.js)",
+      "Read(//tmp/**)",
+      "Bash(git init:*)",
+      "Bash(git branch:*)",
+      "Bash(git status:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
