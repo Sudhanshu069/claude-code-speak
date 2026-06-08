@@ -1,11 +1,11 @@
 {
   "name": "claude-says",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Real-time text-to-speech companion for Claude Code CLI — hear Claude think and narrate as it works",
   "type": "module",
   "bin": {
-    "claude-speak": "./bin/claude-speak.js",
-    "claude-speak-hook": "./bin/claude-speak-hook.js"
+    "claude-speak": "bin/claude-speak.js",
+    "claude-speak-hook": "bin/claude-speak-hook.js"
   },
   "files": [
     "bin/",
@@ -30,6 +30,7 @@
     "url": "https://github.com/abhishek141001/claude-code-speak"
   },
   "dependencies": {
+    "claude-says": "^1.0.0",
     "commander": "^12.0.0"
   },
   "optionalDependencies": {

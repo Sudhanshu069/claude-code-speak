@@ -18,6 +18,8 @@ program
   .option('-p, --provider <name>', `TTS provider (${listProviders().join(', ')})`)
   .option('-s, --session <id>', 'Listen to a specific session ID')
   .option('-l, --list', 'List available sessions and pick one')
+  .option('-r, --rate <number>', 'Speech rate in words per minute (default: 200)', parseInt)
+  .option('-v, --voice <name>', 'macOS voice name (use "claude-speak voices" to list)')
   .option('-n, --narrator', 'Enable narrator mode (LLM rephrases output before speaking)')
   .option('--narrator-provider <name>', 'Narrator LLM provider (default: gemini)')
   .action(async (options) => {
@@ -37,6 +39,8 @@ program
       session: options.session,
       transcriptPath: options.transcriptPath,
       narrator: options.narrator,
+      rate: options.rate,
+      voice: options.voice,
     });
 
     // Graceful shutdown
@@ -86,6 +90,37 @@ program
     for (const p of listProviders()) {
       console.log(`  - ${p}`);
     }
+  });
+
+program
+  .command('voices')
+  .description('List available macOS TTS voices')
+  .option('-a, --all', 'Show all voices (including non-English)')
+  .action(async (options) => {
+    const { execFile } = await import('child_process');
+    execFile('say', ['-v', '?'], (err, stdout) => {
+      if (err) {
+        console.error('Failed to list voices. Are you on macOS?');
+        process.exit(1);
+      }
+      const lines = stdout.trim().split('\n');
+      const voices = lines.map(line => {
+        const match = line.match(/^(.+?)\s{2,}(\S+)/);
+        if (!match) return null;
+        return { name: match[1].trim(), locale: match[2].trim() };
+      }).filter(Boolean);
+
+      const filtered = options.all ? voices : voices.filter(v => v.locale.startsWith('en_'));
+
+      console.log(`Available macOS voices${options.all ? '' : ' (English)'}:\n`);
+      for (const v of filtered) {
+        console.log(`  ${v.name.padEnd(30)} ${v.locale}`);
+      }
+      if (!options.all) {
+        console.log(`\nShowing English voices only. Use --all to see all ${voices.length} voices.`);
+      }
+      console.log(`\nUsage: claude-speak --voice "Daniel"`);
+    });
   });
 
 program.parse();

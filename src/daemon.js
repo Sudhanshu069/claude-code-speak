@@ -15,6 +15,15 @@ export class Daemon {
       this.config.provider = options.provider;
     }
 
+    // macOS voice/rate overrides
+    if (options.rate || options.voice) {
+      this.config.macos = {
+        ...this.config.macos,
+        ...(options.rate && { rate: options.rate }),
+        ...(options.voice && { voice: options.voice }),
+      };
+    }
+
     // Narrator mode
     if (options.narrator) {
       this.config.narrator = { ...this.config.narrator, enabled: true };

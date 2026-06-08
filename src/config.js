@@ -8,6 +8,10 @@ const SOCKET_PATH = '/tmp/claude-speak.sock';
 
 const DEFAULT_CONFIG = {
   provider: 'macos',
+  macos: {
+    voice: 'Samantha',
+    rate: 200,
+  },
   google: {
     voice: 'en-US-Neural2-D',
     languageCode: 'en-US',

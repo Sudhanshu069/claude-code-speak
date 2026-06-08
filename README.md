@@ -1,11 +1,13 @@
-# claude-code-speak
+# claude-says
 
-Real-time text-to-speech companion for Claude Code CLI. Hear Claude think and narrate as it works.
+Stop staring at your terminal waiting for Claude Code to finish. **claude-says** reads Claude's output aloud in real-time so you can step away, stretch, or keep working — and just listen.
+
+Built this because I was tired of babysitting my screen every time Claude Code was making changes. Now my laptop tells me what Claude is building.
 
 ## Install
 
 ```bash
-npm install -g claude-code-speak
+npm install -g claude-says
 ```
 
 ## Quick Start
@@ -21,7 +23,13 @@ claude-speak
 claude
 ```
 
-When Claude finishes a response, you'll hear it spoken aloud.
+That's it. When Claude responds, you'll hear it spoken aloud.
+
+## Why?
+
+- Claude Code runs can take minutes — you shouldn't have to watch text scroll the entire time
+- You might miss when Claude asks for input or confirmation
+- Sometimes you just want to code from your couch
 
 ## TTS Providers
 
@@ -39,6 +47,25 @@ claude-speak --provider google
 
 ### macOS (default)
 Works out of the box using the built-in `say` command. No API keys needed.
+
+```bash
+# Pick a voice
+claude-speak voices              # List English voices
+claude-speak voices --all        # List all 177 voices
+claude-speak --voice "Daniel"    # Use a specific voice
+
+# Control speech rate (words per minute, default: 200)
+claude-speak --rate 150          # Slower
+claude-speak --rate 250          # Faster
+
+# Combine options
+claude-speak --voice "Karen" --rate 150
+```
+
+You can also set these permanently in `~/.claude-speak/config.json`:
+```json
+{ "macos": { "voice": "Daniel", "rate": 150 } }
+```
 
 ### Google Cloud TTS
 ```bash
@@ -59,9 +86,13 @@ claude-speak              # Start daemon (listen to all sessions)
 claude-speak -l           # Pick a session interactively
 claude-speak -s <id>      # Listen to a specific session
 claude-speak -p <name>    # Use a specific TTS provider
+claude-speak --narrator   # Enable LLM narrator mode (summarizes output)
+claude-speak --voice "Daniel"  # Use a specific macOS voice
+claude-speak --rate 150   # Adjust speech rate (words per minute)
 claude-speak setup        # Configure provider and install hook
 claude-speak sessions     # List Claude Code sessions
 claude-speak providers    # List available TTS providers
+claude-speak voices       # List available macOS voices
 ```
 
 ## Controls (while daemon is running)
@@ -77,7 +108,7 @@ claude-speak providers    # List available TTS providers
 1. A `Stop` hook in Claude Code fires after each response
 2. The hook reads the session transcript and extracts the assistant's text
 3. Text is sent to the `claude-speak` daemon via Unix socket IPC
-4. The daemon chunks text into sentences, generates audio via TTS, and plays it through an ordered queue
+4. The daemon splits text into sentences, strips markdown noise, generates audio via TTS, and plays it through an ordered queue
 
 ## Adding a Provider
 
