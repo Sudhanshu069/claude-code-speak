@@ -19,7 +19,18 @@ export class IPCServer extends EventEmitter {
       // Clean up a stale socket. unlink removes the path entry itself (it does
       // not follow a symlink), so this can't be redirected to another file.
       if (existsSync(SOCKET_PATH)) {
-        unlinkSync(SOCKET_PATH);
+        try {
+          unlinkSync(SOCKET_PATH);
+        } catch (err) {
+          if (err.code === 'EACCES') {
+            reject(new Error(
+              `Cannot remove stale socket at ${SOCKET_PATH} (permission denied). ` +
+              `Another user may own it. Try: sudo rm ${SOCKET_PATH}`
+            ));
+            return;
+          }
+          throw err;
+        }
       }
 
       this.server = net.createServer((socket) => {
