@@ -27,6 +27,10 @@ export class MacOSTTSProvider extends BaseTTSProvider {
           '-v', this.voice,
           '-r', String(this.rate),
           '-o', outFile,
+          // End-of-options marker: attacker-influenced text that begins with a
+          // dash is spoken literally, never parsed as a `say` flag (CWE-88 —
+          // e.g. -f/path would read a file into audio, -o/path would clobber).
+          '--',
           text,
         ], (error) => {
           if (error) reject(error);
