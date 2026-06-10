@@ -4,7 +4,10 @@ import { join } from 'path';
 
 const CONFIG_DIR = join(homedir(), '.claude-says');
 const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
-const SOCKET_PATH = '/tmp/claude-says.sock';
+// Keep the socket inside the per-user config dir (owner-owned, not world-
+// writable) rather than shared /tmp, so another local user cannot pre-create
+// or symlink the path to intercept transcript text or hijack/DoS the daemon.
+const SOCKET_PATH = join(CONFIG_DIR, 'claude-says.sock');
 
 const DEFAULT_CONFIG = {
   provider: 'macos',
