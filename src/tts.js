@@ -9,7 +9,7 @@ const PROVIDERS = {
 };
 
 export function createProvider(config) {
-  const name = config.provider || 'google';
+  const name = config.provider || 'macos';
   const ProviderClass = PROVIDERS[name];
   if (!ProviderClass) {
     throw new Error(`Unknown TTS provider: "${name}". Available: ${Object.keys(PROVIDERS).join(', ')}`);
