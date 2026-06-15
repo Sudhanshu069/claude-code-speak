@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture
 
-Two runtime components communicate over a Unix domain socket (`/tmp/claude-says.sock`):
+Two runtime components communicate over a Unix domain socket (`~/.claude-says/claude-says.sock`):
 
 1. **Hook script** (`bin/claude-says-hook.js`) — Installed as a Claude Code `Stop` hook. Reads the session transcript, extracts new assistant text since last invocation (tracked via byte-offset state files in `/tmp/claude-says-state/`), and sends it to the daemon. Must complete within 3s to avoid blocking Claude's output.
 
@@ -43,7 +43,7 @@ Claude Code transcript (JSONL)
 ### Runtime Paths
 
 - Config: `~/.claude-says/config.json`
-- Socket: `/tmp/claude-says.sock`
+- Socket: `~/.claude-says/claude-says.sock`
 - Hook state: `/tmp/claude-says-state/`
 - Audio temp files: `/tmp/claude-says-audio/`
 

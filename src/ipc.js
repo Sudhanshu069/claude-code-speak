@@ -1,5 +1,6 @@
 import net from 'net';
-import { existsSync, unlinkSync, chmodSync } from 'fs';
+import { existsSync, unlinkSync, chmodSync, lstatSync, mkdirSync } from 'fs';
+import { dirname } from 'path';
 import { EventEmitter } from 'events';
 import { SOCKET_PATH } from './config.js';
 
@@ -16,21 +17,36 @@ export class IPCServer extends EventEmitter {
 
   start() {
     return new Promise((resolve, reject) => {
-      // Clean up a stale socket. unlink removes the path entry itself (it does
-      // not follow a symlink), so this can't be redirected to another file.
-      if (existsSync(SOCKET_PATH)) {
-        try {
+      // The socket lives in the per-user config dir (owner-owned, 0700), not in
+      // world-writable /tmp, so no other local user can pre-create or symlink
+      // this path to intercept transcript text or hijack/DoS the daemon.
+      try {
+        mkdirSync(dirname(SOCKET_PATH), { recursive: true, mode: 0o700 });
+      } catch (err) {
+        reject(err);
+        return;
+      }
+
+      // Clean up a stale socket from a previous run. lstat does NOT follow
+      // symlinks; only ever unlink a real socket, and refuse to bind through
+      // anything else (a symlink or regular file would be unexpected in our
+      // owner-only dir and must never be followed).
+      try {
+        const st = lstatSync(SOCKET_PATH);
+        if (st.isSocket()) {
           unlinkSync(SOCKET_PATH);
-        } catch (err) {
-          if (err.code === 'EACCES') {
-            reject(new Error(
-              `Cannot remove stale socket at ${SOCKET_PATH} (permission denied). ` +
-              `Another user may own it. Try: sudo rm ${SOCKET_PATH}`
-            ));
-            return;
-          }
-          throw err;
+        } else {
+          reject(new Error(
+            `Refusing to use ${SOCKET_PATH}: it exists but is not a socket. Remove it and try again.`
+          ));
+          return;
         }
+      } catch (err) {
+        if (err.code !== 'ENOENT') {
+          reject(err);
+          return;
+        }
+        // ENOENT: nothing there yet — fine.
       }
 
       this.server = net.createServer((socket) => {
@@ -116,6 +132,19 @@ export function sendToSocket(data) {
       settled = true;
       resolve(delivered);
     };
+
+    // Only ever write transcript text to a real socket. lstat does not follow
+    // symlinks; if the path is missing (daemon down) or not a socket, report
+    // non-delivery rather than connecting/writing through an unexpected path.
+    try {
+      if (!lstatSync(SOCKET_PATH).isSocket()) {
+        done(false);
+        return;
+      }
+    } catch {
+      done(false);
+      return;
+    }
 
     const client = net.createConnection(SOCKET_PATH, () => {
       client.write(JSON.stringify(data) + '\n');
