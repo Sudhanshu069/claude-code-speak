@@ -70,12 +70,13 @@ const maxLogLines = 500
 
 // Styles bundles the lipgloss styles used across the view.
 type Styles struct {
-	Header  lipgloss.Style
-	Session lipgloss.Style
-	Paused  lipgloss.Style
-	Line    lipgloss.Style
-	ErrLine lipgloss.Style
-	Picker  lipgloss.Style
+	Header   lipgloss.Style
+	Session  lipgloss.Style
+	Paused   lipgloss.Style
+	Speaking lipgloss.Style
+	Line     lipgloss.Style
+	ErrLine  lipgloss.Style
+	Picker   lipgloss.Style
 }
 
 // NewStyles builds theme-aware (light/dark) styles. lipgloss AdaptiveColor picks
@@ -87,14 +88,16 @@ func NewStyles() Styles {
 	accent := lipgloss.AdaptiveColor{Light: "63", Dark: "111"}
 	warn := lipgloss.AdaptiveColor{Light: "130", Dark: "214"}
 	danger := lipgloss.AdaptiveColor{Light: "160", Dark: "203"}
+	good := lipgloss.AdaptiveColor{Light: "28", Dark: "78"}
 
 	return Styles{
-		Header:  lipgloss.NewStyle().Bold(true).Foreground(accent),
-		Session: lipgloss.NewStyle().Foreground(subtle),
-		Paused:  lipgloss.NewStyle().Bold(true).Foreground(warn),
-		Line:    lipgloss.NewStyle().Foreground(fg),
-		ErrLine: lipgloss.NewStyle().Foreground(danger),
-		Picker:  lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(subtle).Padding(0, 1),
+		Header:   lipgloss.NewStyle().Bold(true).Foreground(accent),
+		Session:  lipgloss.NewStyle().Foreground(subtle),
+		Paused:   lipgloss.NewStyle().Bold(true).Foreground(warn),
+		Speaking: lipgloss.NewStyle().Bold(true).Foreground(good),
+		Line:     lipgloss.NewStyle().Foreground(fg),
+		ErrLine:  lipgloss.NewStyle().Foreground(danger),
+		Picker:   lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(subtle).Padding(0, 1),
 	}
 }
 
@@ -119,6 +122,7 @@ type Model struct {
 	lines    []string
 	picking  bool
 	paused   bool
+	speaking bool
 	provider string
 	narrator string
 	active   string
@@ -284,6 +288,9 @@ func (m *Model) applyEvent(ev Event) {
 
 	switch ev.Kind {
 	case EventText, EventPlaying:
+		if ev.Kind == EventPlaying {
+			m.speaking = true
+		}
 		if t := strings.TrimSpace(ev.Text); t != "" {
 			m.appendLine(m.styles.Line.Render(t))
 		}
@@ -312,7 +319,7 @@ func (m *Model) applyEvent(ev Event) {
 			m.appendLine(m.styles.Session.Render("— " + ev.Text))
 		}
 	case EventDrained:
-		// Queue drained: nothing to log, header already reflects queue=0.
+		m.speaking = false
 	}
 }
 
@@ -373,21 +380,10 @@ func (m Model) View() string {
 
 	var header strings.Builder
 	header.WriteString(m.styles.Header.Render("claude-says"))
-	header.WriteString("  ")
-	fields := []string{"provider=" + m.provider}
-	if m.narrator != "" {
-		fields = append(fields, "narrator="+m.narrator)
-	}
-	fields = append(fields,
-		"session="+m.activeSessionName(),
-		fmt.Sprintf("epoch=%d", m.epoch),
-		fmt.Sprintf("queue=%d", m.queue),
-	)
-	header.WriteString(m.styles.Session.Render(strings.Join(fields, "  ")))
-	if m.paused {
-		header.WriteString("  ")
-		header.WriteString(m.styles.Paused.Render("[PAUSED]"))
-	}
+	header.WriteString("   ")
+	header.WriteString(m.styles.Header.Render(m.activeSessionName()))
+	header.WriteString("   ")
+	header.WriteString(m.statusBadge())
 
 	var body, footer string
 	if m.picking {
@@ -435,6 +431,18 @@ func truncateLabel(s string, n int) string {
 		return s
 	}
 	return string(r[:n-1]) + "…"
+}
+
+// statusBadge renders the current playback state for the header.
+func (m Model) statusBadge() string {
+	switch {
+	case m.paused:
+		return m.styles.Paused.Render("⏸ paused")
+	case m.speaking:
+		return m.styles.Speaking.Render("● speaking")
+	default:
+		return m.styles.Session.Render("○ idle")
+	}
 }
 
 // waitForEvent blocks on the daemon channel and returns the Event as a tea.Msg,

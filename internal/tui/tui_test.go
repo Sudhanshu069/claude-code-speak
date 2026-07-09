@@ -471,14 +471,21 @@ func TestSend_NilChannelNoPanic(t *testing.T) {
 	}
 }
 
-func TestView_ShowsNarrator(t *testing.T) {
-	cfg := config.Config{Provider: "macos"}
-	cfg.Narrator.Enabled = true
-	cfg.Narrator.Provider = "gemini"
-	m := New(cfg, make(chan Event), make(chan Control), nil)
+func TestView_StatusBadge(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	m, _ := newTestModel(t, nil)
 	m = ready(t, m)
-	if v := m.View(); !strings.Contains(v, "narrator=gemini") {
-		t.Errorf("View missing narrator field: %q", v)
+
+	if !strings.Contains(m.View(), "○ idle") {
+		t.Errorf("idle badge missing: %q", m.View())
+	}
+	m.applyEvent(Event{Kind: EventPlaying, Epoch: 1})
+	if !strings.Contains(m.View(), "● speaking") {
+		t.Errorf("speaking badge missing after EventPlaying")
+	}
+	m.applyEvent(Event{Kind: EventDrained, Epoch: 1})
+	if !strings.Contains(m.View(), "○ idle") {
+		t.Errorf("badge did not return to idle after EventDrained")
 	}
 }
 
@@ -574,20 +581,20 @@ func TestView_AcrossStates(t *testing.T) {
 	if idle == "" || !strings.Contains(idle, "claude-says") {
 		t.Errorf("idle View missing header: %q", idle)
 	}
-	if !strings.Contains(idle, "provider=macos") {
-		t.Errorf("idle View missing provider field: %q", idle)
+	if !strings.Contains(idle, "○ idle") {
+		t.Errorf("idle View missing idle badge: %q", idle)
 	}
 
-	// Playing: header reflects queue depth.
+	// Playing: header shows the speaking badge.
 	m.applyEvent(Event{Kind: EventPlaying, Epoch: 1, Queue: 3, Text: "speaking"})
-	if playing := m.View(); !strings.Contains(playing, "queue=3") {
-		t.Errorf("playing View missing queue counter: %q", playing)
+	if playing := m.View(); !strings.Contains(playing, "● speaking") {
+		t.Errorf("playing View missing speaking badge: %q", playing)
 	}
 
-	// Paused: header shows the paused badge.
+	// Paused: header shows the paused badge (takes precedence over speaking).
 	mp, _ := step(t, m, runes("p"))
-	if paused := mp.View(); !strings.Contains(paused, "[PAUSED]") {
-		t.Errorf("paused View missing badge: %q", paused)
+	if paused := mp.View(); !strings.Contains(paused, "⏸ paused") {
+		t.Errorf("paused View missing paused badge: %q", paused)
 	}
 
 	// Picker open: footer switches to picker controls.
