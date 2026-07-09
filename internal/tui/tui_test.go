@@ -596,3 +596,21 @@ func TestView_AcrossStates(t *testing.T) {
 		t.Errorf("picker View missing picker footer: %q", picker)
 	}
 }
+
+func TestActiveSessionName(t *testing.T) {
+	const id = "abcdef12-3456-7890-abcd-ef1234567890"
+	m := Model{sessions: []session.Info{{ID: id, Title: "Fix the invoice PDF"}}}
+
+	m.active = id
+	if got := m.activeSessionName(); got != "Fix the invoice PDF" {
+		t.Errorf("with title: got %q, want the title", got)
+	}
+	m.sessions[0].Title = "" // no title -> short id
+	if got := m.activeSessionName(); got != "abcdef12" {
+		t.Errorf("no title: got %q, want short id abcdef12", got)
+	}
+	m.active = "" // all-sessions
+	if got := m.activeSessionName(); got != "all" {
+		t.Errorf("empty active: got %q, want all", got)
+	}
+}

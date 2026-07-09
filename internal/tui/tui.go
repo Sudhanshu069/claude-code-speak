@@ -378,14 +378,8 @@ func (m Model) View() string {
 	if m.narrator != "" {
 		fields = append(fields, "narrator="+m.narrator)
 	}
-	sess := m.active
-	if sess == "" {
-		sess = "all"
-	} else if len(sess) > 8 {
-		sess = sess[:8]
-	}
 	fields = append(fields,
-		"session="+sess,
+		"session="+m.activeSessionName(),
 		fmt.Sprintf("epoch=%d", m.epoch),
 		fmt.Sprintf("queue=%d", m.queue),
 	)
@@ -400,11 +394,47 @@ func (m Model) View() string {
 		body = m.picker.View()
 		footer = m.styles.Session.Render("↑/↓ move  enter select  esc cancel")
 	} else {
-		body = m.vp.View()
+		if len(m.lines) == 0 {
+			// Nothing spoken yet: an idle hint beats a blank screen.
+			hint := m.styles.Session.Render("  Listening — Claude Code's replies show up here as they're spoken.")
+			pad := m.vp.Height - 1
+			if pad < 0 {
+				pad = 0
+			}
+			body = hint + strings.Repeat("\n", pad)
+		} else {
+			body = m.vp.View()
+		}
 		footer = m.styles.Session.Render("[p]ause/resume  [s]witch session  [q]uit")
 	}
 
 	return strings.Join([]string{header.String(), body, footer}, "\n")
+}
+
+// activeSessionName is the header label for the followed session: its name (from
+// the loaded session titles), else its short id, else "all".
+func (m Model) activeSessionName() string {
+	if m.active == "" {
+		return "all"
+	}
+	for _, s := range m.sessions {
+		if s.ID == m.active && s.Title != "" {
+			return truncateLabel(s.Title, 44)
+		}
+	}
+	if len(m.active) > 8 {
+		return m.active[:8]
+	}
+	return m.active
+}
+
+// truncateLabel shortens s to at most n runes, with a trailing ellipsis.
+func truncateLabel(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
 }
 
 // waitForEvent blocks on the daemon channel and returns the Event as a tea.Msg,
