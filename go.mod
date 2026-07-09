@@ -1,4 +1,4 @@
-module github.com/Sudhanshu069/claude-code-speak
+module github.com/Sudhanshu069/claude-says
 
 go 1.26
 

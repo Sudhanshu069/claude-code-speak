@@ -17,8 +17,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/Sudhanshu069/claude-code-speak/internal/config"
-	"github.com/Sudhanshu069/claude-code-speak/internal/session"
+	"github.com/Sudhanshu069/claude-says/internal/config"
+	"github.com/Sudhanshu069/claude-says/internal/session"
 )
 
 // EventKind classifies daemon -> UI notifications.

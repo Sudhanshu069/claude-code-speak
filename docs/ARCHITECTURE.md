@@ -5,7 +5,7 @@ Code's session transcript and speaks new assistant output aloud, optionally
 rephrasing it through an LLM "narrator" first.
 
 This describes the **Go implementation** (a single static binary,
-`github.com/Sudhanshu069/claude-code-speak`). The original Node.js version under
+`github.com/Sudhanshu069/claude-says`). The original Node.js version under
 `bin/`/`src/` is retained for reference only; the Go source under `cmd/` and
 `internal/` is authoritative.
 

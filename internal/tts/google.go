@@ -14,7 +14,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
-	"github.com/Sudhanshu069/claude-code-speak/internal/config"
+	"github.com/Sudhanshu069/claude-says/internal/config"
 )
 
 // googleTimeout is the per-request client Timeout backstop (Node bug #4/#24).

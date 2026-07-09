@@ -14,15 +14,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Sudhanshu069/claude-code-speak/internal/audio"
-	"github.com/Sudhanshu069/claude-code-speak/internal/config"
-	"github.com/Sudhanshu069/claude-code-speak/internal/ipc"
-	"github.com/Sudhanshu069/claude-code-speak/internal/narrator"
-	"github.com/Sudhanshu069/claude-code-speak/internal/session"
-	"github.com/Sudhanshu069/claude-code-speak/internal/textproc"
-	"github.com/Sudhanshu069/claude-code-speak/internal/transcript"
-	"github.com/Sudhanshu069/claude-code-speak/internal/tts"
-	"github.com/Sudhanshu069/claude-code-speak/internal/tui"
+	"github.com/Sudhanshu069/claude-says/internal/audio"
+	"github.com/Sudhanshu069/claude-says/internal/config"
+	"github.com/Sudhanshu069/claude-says/internal/ipc"
+	"github.com/Sudhanshu069/claude-says/internal/narrator"
+	"github.com/Sudhanshu069/claude-says/internal/session"
+	"github.com/Sudhanshu069/claude-says/internal/textproc"
+	"github.com/Sudhanshu069/claude-says/internal/transcript"
+	"github.com/Sudhanshu069/claude-says/internal/tts"
+	"github.com/Sudhanshu069/claude-says/internal/tui"
 )
 
 // Default timing knobs.

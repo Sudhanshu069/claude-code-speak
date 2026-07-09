@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **⚙️ Primary implementation is now Go.** `claude-says` was rewritten from Node.js to a single static Go binary (`github.com/Sudhanshu069/claude-code-speak`). The **Go source under `cmd/` and `internal/` is authoritative**; the Node source under `bin/` and `src/` is retained only as a reference during the transition and is described in the "Legacy Node implementation" sections below. New work goes in Go.
+> **⚙️ Primary implementation is now Go.** `claude-says` was rewritten from Node.js to a single static Go binary (`github.com/Sudhanshu069/claude-says`). The **Go source under `cmd/` and `internal/` is authoritative**; the Node source under `bin/` and `src/` is retained only as a reference during the transition and is described in the "Legacy Node implementation" sections below. New work goes in Go.
 
 ## Go implementation (authoritative)
 
@@ -43,7 +43,7 @@ The sections below describe the original Node.js app under `bin/`/`src/`. It is 
 
 ### Project Overview
 
-`claude-says` is a real-time text-to-speech companion for Claude Code CLI. It runs as a background daemon that listens for Claude Code's text output and speaks it aloud using a TTS provider. macOS-only (uses `afplay` for playback). The CLI command is `claude-says`; the GitHub repository is `Sudhanshu069/claude-code-speak`.
+`claude-says` is a real-time text-to-speech companion for Claude Code CLI. It runs as a background daemon that listens for Claude Code's text output and speaks it aloud using a TTS provider. macOS-only (uses `afplay` for playback). The CLI command is `claude-says`; the GitHub repository is `Sudhanshu069/claude-says`.
 
 ## Architecture
 

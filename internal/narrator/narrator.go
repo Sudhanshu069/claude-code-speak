@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Sudhanshu069/claude-code-speak/internal/config"
+	"github.com/Sudhanshu069/claude-says/internal/config"
 )
 
 // Narrator rephrases assistant text before TTS. Narrate is TOTAL: it returns

@@ -11,7 +11,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Sudhanshu069/claude-code-speak/internal/config"
+	"github.com/Sudhanshu069/claude-says/internal/config"
 )
 
 // geminiTimeout bounds every Gemini request (context deadline + client Timeout).

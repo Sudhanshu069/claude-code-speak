@@ -22,13 +22,13 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"github.com/Sudhanshu069/claude-code-speak/internal/audio"
-	"github.com/Sudhanshu069/claude-code-speak/internal/config"
-	"github.com/Sudhanshu069/claude-code-speak/internal/daemon"
-	"github.com/Sudhanshu069/claude-code-speak/internal/logx"
-	"github.com/Sudhanshu069/claude-code-speak/internal/session"
-	"github.com/Sudhanshu069/claude-code-speak/internal/tts"
-	"github.com/Sudhanshu069/claude-code-speak/internal/tui"
+	"github.com/Sudhanshu069/claude-says/internal/audio"
+	"github.com/Sudhanshu069/claude-says/internal/config"
+	"github.com/Sudhanshu069/claude-says/internal/daemon"
+	"github.com/Sudhanshu069/claude-says/internal/logx"
+	"github.com/Sudhanshu069/claude-says/internal/session"
+	"github.com/Sudhanshu069/claude-says/internal/tts"
+	"github.com/Sudhanshu069/claude-says/internal/tui"
 )
 
 // shutdownDrainTimeout bounds the audio drain on quit so a stuck player can

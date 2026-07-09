@@ -13,8 +13,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Sudhanshu069/claude-code-speak/internal/config"
-	"github.com/Sudhanshu069/claude-code-speak/internal/ipc"
+	"github.com/Sudhanshu069/claude-says/internal/config"
+	"github.com/Sudhanshu069/claude-says/internal/ipc"
 )
 
 // hookOverallTimeout bounds the whole hook op so it never blocks Claude's Stop

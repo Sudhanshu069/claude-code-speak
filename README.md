@@ -19,7 +19,7 @@ A single, dependency-free binary with a live TUI: watch (and hear) what Claude i
 ### From source (recommended)
 
 ```bash
-git clone https://github.com/Sudhanshu069/claude-code-speak.git
+git clone https://github.com/Sudhanshu069/claude-says.git
 cd claude-code-speak
 go build -o claude-says ./cmd/claude-says
 # then move it onto your PATH, e.g.:
@@ -29,7 +29,7 @@ sudo mv claude-says /usr/local/bin/
 ### With `go install`
 
 ```bash
-go install github.com/Sudhanshu069/claude-code-speak/cmd/claude-says@latest
+go install github.com/Sudhanshu069/claude-says/cmd/claude-says@latest
 # installs to $(go env GOBIN) or $(go env GOPATH)/bin — make sure that's on your PATH
 ```
 
@@ -213,7 +213,7 @@ Implement the `Narrator` interface in `internal/narrator` (`Narrate(ctx, text) s
 - **Sudhanshu Singh** ([@Sudhanshu069](https://github.com/Sudhanshu069)) — maintainer of this Go rewrite
 - **Abhishek Raj** ([@abhishek141001](https://github.com/abhishek141001)) — original author of the Node.js version
 
-Issues and PRs welcome at [github.com/Sudhanshu069/claude-code-speak](https://github.com/Sudhanshu069/claude-code-speak).
+Issues and PRs welcome at [github.com/Sudhanshu069/claude-says](https://github.com/Sudhanshu069/claude-says).
 
 ## License
 

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Sudhanshu069/claude-code-speak/internal/config"
+	"github.com/Sudhanshu069/claude-says/internal/config"
 )
 
 // elevenLabsTimeout is the client Timeout backstop that FIXES Node bug #4/#24

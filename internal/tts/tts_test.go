@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Sudhanshu069/claude-code-speak/internal/config"
+	"github.com/Sudhanshu069/claude-says/internal/config"
 )
 
 // ---- frozen HTTP fakes (no network, no httptest server) -------------------
