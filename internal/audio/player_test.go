@@ -28,7 +28,10 @@ func TestRandomTokenHexAndDistinct(t *testing.T) {
 	re := regexp.MustCompile(`^[0-9a-f]{32}$`)
 	seen := make(map[string]bool)
 	for i := 0; i < 200; i++ {
-		tok := randomToken()
+		tok, err := randomToken()
+		if err != nil {
+			t.Fatalf("randomToken() error: %v", err)
+		}
 		if !re.MatchString(tok) {
 			t.Fatalf("randomToken() = %q, want 32 lowercase hex chars", tok)
 		}

@@ -94,9 +94,11 @@ func Load() (Config, error) {
 }
 
 // Save writes JSON to ConfigFile(): MkdirAll 0700, temp file + os.Rename
-// (atomic), os.Chmod 0600 best-effort. Config may hold API keys, so the file is
-// owner-only. Mirrors Node saveConfig (config.js): the write is the contract,
-// the chmod is best-effort hardening that must never fail the save.
+// (atomic), os.Chmod 0600 best-effort. The config holds no secrets today
+// (GEMINI_API_KEY lives in the environment, never on disk); 0600 is kept as
+// defense-in-depth so a future secret-bearing field is owner-only by default.
+// Mirrors Node saveConfig (config.js): the write is the contract, the chmod is
+// best-effort hardening that must never fail the save.
 func (c Config) Save() error {
 	dir, err := ConfigDir()
 	if err != nil {
@@ -117,7 +119,7 @@ func (c Config) Save() error {
 
 	// Write to a temp file in the same dir, then rename over the target so a
 	// reader never observes a partially written config. Create the temp file
-	// 0600 up front so secrets are never briefly world-readable.
+	// 0600 up front so the config is never briefly world-readable.
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return err

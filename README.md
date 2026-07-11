@@ -117,6 +117,8 @@ export GEMINI_API_KEY=your-key
 claude-says start --narrator
 ```
 
+> **Privacy — data leaves your machine.** Narrator mode is **off by default**. When you enable it, each new block of Claude's output is sent to Google's Gemini API (`generativelanguage.googleapis.com`) to be rephrased. The prompt asks Gemini to skip code and file paths, but the **raw text is transmitted in full** before any filtering — so it can include source code, file contents, secrets, or other sensitive material from your session. The API key is read only from `GEMINI_API_KEY` and is never written to disk. Leave `--narrator` off if you don't want session text sent to a third party. Everything else (the default macOS `say` path) runs entirely locally.
+
 ## Commands
 
 ```bash

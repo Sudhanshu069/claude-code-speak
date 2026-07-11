@@ -39,7 +39,11 @@ func NewPlayer() (*AfplayPlayer, error) {
 func (p *AfplayPlayer) Play(ctx context.Context, audio []byte, format string) error {
 	// Unpredictable name (no other process can guess/enumerate it) with
 	// owner-only perms. Random names also avoid same-millisecond collisions.
-	tmp := filepath.Join(p.dir, "chunk-"+randomToken()+extForFormat(format))
+	tok, err := randomToken()
+	if err != nil {
+		return err
+	}
+	tmp := filepath.Join(p.dir, "chunk-"+tok+extForFormat(format))
 	if err := os.WriteFile(tmp, audio, 0o600); err != nil {
 		return err
 	}
@@ -58,16 +62,17 @@ func (p *AfplayPlayer) Play(ctx context.Context, audio []byte, format string) er
 	return nil
 }
 
-// randomToken returns 16 bytes of cryptographically-random hex.
-func randomToken() string {
+// randomToken returns 16 bytes of cryptographically-random hex. It surfaces a
+// crypto/rand failure instead of falling back to a fixed name: a predictable
+// temp-file name in a shared dir is a symlink-attack foothold, so the caller
+// aborts this one render rather than write to a guessable path.
+func randomToken() (string, error) {
 	var b [16]byte
-	// crypto/rand.Read never returns a short read on success; on the vanishingly
-	// rare error we fall back to a fixed token — the temp file is still 0600 and
-	// removed promptly, so predictability of the name is the only cost.
+	// crypto/rand.Read never returns a short read on success.
 	if _, err := rand.Read(b[:]); err != nil {
-		return "fallback"
+		return "", err
 	}
-	return hex.EncodeToString(b[:])
+	return hex.EncodeToString(b[:]), nil
 }
 
 // extForFormat is the single source of truth mapping a Provider format string

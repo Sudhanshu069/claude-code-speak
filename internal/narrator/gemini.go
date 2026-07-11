@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/Sudhanshu069/claude-says/internal/config"
@@ -16,6 +17,17 @@ import (
 
 // geminiTimeout bounds every Gemini request (context deadline + client Timeout).
 const geminiTimeout = 10 * time.Second
+
+// geminiMaxRespBytes caps the response body we decode. Responses are tiny
+// (MaxOutputTokens: 100), so 1 MiB is generous headroom; the cap keeps a
+// misbehaving or MITM'd endpoint from streaming an unbounded body into memory.
+const geminiMaxRespBytes = 1 << 20
+
+// modelRe validates the model id before it is interpolated into the request
+// URL. Every real Gemini model id (e.g. "gemini-2.5-flash",
+// "gemini-1.5-pro-latest") matches; rejecting anything else stops a crafted
+// config value from injecting extra path segments or query parameters.
+var modelRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 // geminiSystemPrompt is the narrator instruction, verbatim from Node
 // src/narrators/gemini.js.
@@ -107,6 +119,9 @@ func (n *GeminiNarrator) generate(ctx context.Context, text string) (string, err
 	if n.apiKey == "" {
 		return "", errNoAPIKey
 	}
+	if !modelRe.MatchString(n.model) {
+		return "", fmt.Errorf("gemini: invalid model %q", n.model)
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, geminiTimeout)
 	defer cancel()
@@ -145,7 +160,7 @@ func (n *GeminiNarrator) generate(ctx context.Context, text string) (string, err
 	}
 
 	var parsed geminiResp
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, geminiMaxRespBytes)).Decode(&parsed); err != nil {
 		return "", err
 	}
 	if len(parsed.Candidates) > 0 && len(parsed.Candidates[0].Content.Parts) > 0 {

@@ -61,14 +61,16 @@ func sayArgs(voice string, rate int, outFile, text string) []string {
 	}
 }
 
-// randToken returns an unpredictable hex token for temp-file names.
-func randToken() string {
+// randToken returns an unpredictable hex token for temp-file names. It surfaces
+// a crypto/rand failure rather than falling back to a fixed name: a predictable
+// name in a shared temp dir invites a symlink attack, so the caller aborts this
+// one render instead of writing to a guessable path.
+func randToken() (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		// Extremely unlikely; a constant name still works, just less unique.
-		return "fallback"
+		return "", err
 	}
-	return hex.EncodeToString(b[:])
+	return hex.EncodeToString(b[:]), nil
 }
 
 // Synthesize runs:  say -v <voice> -r <rate> -o <tmp>.aiff -- <text>
@@ -78,7 +80,11 @@ func randToken() string {
 func (p *MacOSProvider) Synthesize(ctx context.Context, text string) ([]byte, string, error) {
 	// Unpredictable name: avoids collisions between concurrent synth calls and
 	// stops other local processes guessing/reading the rendered audio.
-	outFile := filepath.Join(p.tmpDir, "claude-says-"+randToken()+".aiff")
+	tok, err := randToken()
+	if err != nil {
+		return nil, FormatAIFF, fmt.Errorf("temp token: %w", err)
+	}
+	outFile := filepath.Join(p.tmpDir, "claude-says-"+tok+".aiff")
 
 	// Always remove the temp file — even if `say` failed partway and left a
 	// partial/zero-byte .aiff behind (e.g. killed mid-render on shutdown).
