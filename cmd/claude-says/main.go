@@ -48,6 +48,10 @@ type startOptions struct {
 	Skip             []string
 	NoDedupe         bool
 	Verbatim         bool
+	Volume           float64
+	FlushDelay       int
+	MinChunk         int
+	MaxChunk         int
 }
 
 func main() {
@@ -179,6 +183,10 @@ func bindStartFlags(fs *pflag.FlagSet, o *startOptions) {
 	fs.StringArrayVar(&o.Skip, "skip", nil, "Also mute spoken sentences containing this text (case-insensitive; repeatable)")
 	fs.BoolVar(&o.NoDedupe, "no-dedupe", false, "Allow consecutive identical sentences (dedupe is on by default)")
 	fs.BoolVar(&o.Verbatim, "verbatim", false, "Speak the raw stream: no dedupe, no filler filter, ignore --skip")
+	fs.Float64Var(&o.Volume, "volume", 0, "Playback volume (afplay -v; 1.0 is normal, higher amplifies)")
+	fs.IntVar(&o.FlushDelay, "flush-delay", 0, "Ms to wait before speaking a trailing partial sentence (default 1500)")
+	fs.IntVar(&o.MinChunk, "min-chunk", 0, "Minimum characters for a spoken sentence (default 10)")
+	fs.IntVar(&o.MaxChunk, "max-chunk", 0, "Force-break a buffered sentence at this many characters (default 500)")
 }
 
 // registerStartCompletions wires shell tab-completion for the start flags:
@@ -232,6 +240,18 @@ func applyOverrides(cfg config.Config, o startOptions) config.Config {
 	if o.Voice != "" {
 		cfg.Macos.Voice = o.Voice
 	}
+	if o.Volume > 0 {
+		cfg.Macos.Volume = o.Volume
+	}
+	if o.FlushDelay > 0 {
+		cfg.TextProcessor.FlushDelay = o.FlushDelay
+	}
+	if o.MinChunk > 0 {
+		cfg.TextProcessor.MinChunkLength = o.MinChunk
+	}
+	if o.MaxChunk > 0 {
+		cfg.TextProcessor.MaxChunkLength = o.MaxChunk
+	}
 	if o.Narrator {
 		cfg.Narrator.Enabled = true
 		if o.NarratorProvider != "" {
@@ -255,6 +275,54 @@ func applyOverrides(cfg config.Config, o startOptions) config.Config {
 	return cfg
 }
 
+// persistPreferences writes the PREFERENCE flags the user set this run back to
+// config.json so they stick next time — no --save needed. Only stable settings
+// persist (voice, rate, volume, and the text-processor tuning); per-run/mode and
+// privacy flags (--narrator, --verbatim, --no-dedupe, --skip, --session, --list)
+// are deliberately NOT saved. It loads the on-disk config fresh (not this run's
+// merged cfg) so those unsaved flags never leak into the file, and prints a
+// short confirmation so the persistence is never a silent surprise.
+func persistPreferences(cmd *cobra.Command, o *startOptions) {
+	changed := cmd.Flags().Changed
+	if !changed("voice") && !changed("rate") && !changed("volume") &&
+		!changed("flush-delay") && !changed("min-chunk") && !changed("max-chunk") {
+		return
+	}
+
+	saved, _ := config.Load() // file-or-defaults, WITHOUT this run's flags
+	var remembered []string
+	if changed("voice") {
+		saved.Macos.Voice = o.Voice
+		remembered = append(remembered, "voice="+o.Voice)
+	}
+	if changed("rate") {
+		saved.Macos.Rate = o.Rate
+		remembered = append(remembered, fmt.Sprintf("rate=%d", o.Rate))
+	}
+	if changed("volume") {
+		saved.Macos.Volume = o.Volume
+		remembered = append(remembered, fmt.Sprintf("volume=%g", o.Volume))
+	}
+	if changed("flush-delay") {
+		saved.TextProcessor.FlushDelay = o.FlushDelay
+		remembered = append(remembered, fmt.Sprintf("flush-delay=%d", o.FlushDelay))
+	}
+	if changed("min-chunk") {
+		saved.TextProcessor.MinChunkLength = o.MinChunk
+		remembered = append(remembered, fmt.Sprintf("min-chunk=%d", o.MinChunk))
+	}
+	if changed("max-chunk") {
+		saved.TextProcessor.MaxChunkLength = o.MaxChunk
+		remembered = append(remembered, fmt.Sprintf("max-chunk=%d", o.MaxChunk))
+	}
+
+	if err := saved.Save(); err != nil {
+		fmt.Fprintf(os.Stderr, "Note: could not save preferences: %v\n", err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "Remembered %s (saved to ~/.claude-says/config.json)\n", strings.Join(remembered, ", "))
+}
+
 // runStart loads config, applies overrides, resolves the session to follow, and
 // runs the daemon. When stdout is a TTY it drives the Bubble Tea UI (which mirrors
 // transcript text into a scrolling log and forwards p/s/q controls back to the
@@ -262,6 +330,7 @@ func applyOverrides(cfg config.Config, o startOptions) config.Config {
 func runStart(cmd *cobra.Command, o *startOptions) error {
 	cfg, _ := config.Load()
 	cfg = applyOverrides(cfg, *o)
+	persistPreferences(cmd, o)
 
 	sessionID, transcriptPath, proceed, err := resolveSession(o)
 	if err != nil {

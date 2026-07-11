@@ -17,7 +17,7 @@ go build ./... && go vet ./... && go test ./...   # must stay green
 Package layout:
 
 ```
-cmd/claude-says/     Cobra CLI: start [default] + voices + uninstall
+cmd/claude-says/     Cobra CLI: start [default] + voices + uninstall; preference flags (voice/rate/volume/flush-delay/min|max-chunk) auto-persist to config.json via persistPreferences (privacy/mode flags never do)
 internal/config      ~/.claude-says/config.json (camelCase JSON, 0600, atomic writes, DefaultConfig)
 internal/logx        log/slog logger — pretty on a TTY, JSON when piped; level via env
 internal/session     session discovery under ~/.claude/projects (MostRecent, FindTranscript)

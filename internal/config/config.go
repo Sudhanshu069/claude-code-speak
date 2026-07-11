@@ -21,10 +21,11 @@ type Config struct {
 	Narrator      NarratorConfig      `json:"narrator"`
 }
 
-// MacosConfig configures the macOS `say` provider.
+// MacosConfig configures the macOS `say` provider and afplay playback.
 type MacosConfig struct {
-	Voice string `json:"voice"`
-	Rate  int    `json:"rate"`
+	Voice  string  `json:"voice"`
+	Rate   int     `json:"rate"`
+	Volume float64 `json:"volume"` // afplay -v; 0 = system default (no -v passed), 1.0 = normal
 }
 
 // TextProcessorConfig configures sentence buffering/splitting and content

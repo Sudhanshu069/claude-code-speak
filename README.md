@@ -126,12 +126,17 @@ claude-says start              # Start the daemon + TUI (auto-detects most recen
 claude-says start -l           # Pick a session interactively
 claude-says start -s <id>      # Listen to a specific session
 claude-says start --narrator   # Enable LLM narrator mode
-claude-says start --voice "Daniel"
-claude-says start --rate 150
+claude-says start --voice "Daniel" --rate 150 --volume 0.8   # remembered next time
 claude-says start --verbatim   # Hear everything, no filtering (see below)
 claude-says voices             # List available macOS voices
 claude-says --version
 ```
+
+### Settings just stick
+
+Preference flags — `--voice`, `--rate`, `--volume`, `--flush-delay`, `--min-chunk`, `--max-chunk` — are **remembered automatically**: set them once and a bare `claude-says start` uses them next time (it prints a one-line `Remembered …` confirmation and writes `~/.claude-says/config.json`). No `--save` flag.
+
+Per-run and privacy flags are deliberately **not** persisted: `--narrator` (it sends text to Google — see below), `--verbatim`, `--no-dedupe`, `--skip`, `--session`, `--list`. You opt into those each run.
 
 ### Filtering what gets spoken
 
@@ -184,7 +189,7 @@ Settings live in `~/.claude-says/config.json` (owner-only, `0600`) and are merge
 ```json
 {
   "provider": "macos",
-  "macos": { "voice": "Samantha", "rate": 200 },
+  "macos": { "voice": "Samantha", "rate": 200, "volume": 0 },
   "textProcessor": { "minChunkLength": 10, "maxChunkLength": 500, "flushDelay": 1500, "dedupe": true, "filterFiller": true, "skip": [] },
   "narrator": {
     "enabled": false,

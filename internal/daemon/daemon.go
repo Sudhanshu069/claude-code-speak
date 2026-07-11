@@ -115,7 +115,7 @@ func New(cfg config.Config, opts Options) (*Daemon, error) {
 		}
 	}
 
-	player, err := audio.NewPlayer()
+	player, err := audio.NewPlayer(cfg.Macos.Volume)
 	if err != nil {
 		return nil, err
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"reflect"
 	"regexp"
 	"testing"
 )
@@ -42,9 +43,27 @@ func TestRandomTokenHexAndDistinct(t *testing.T) {
 	}
 }
 
+// afplayArgs adds -v only when volume > 0, and always puts the file last.
+func TestAfplayArgs(t *testing.T) {
+	if got := afplayArgs(0, "/tmp/x.aiff"); !reflect.DeepEqual(got, []string{"/tmp/x.aiff"}) {
+		t.Errorf("afplayArgs(0) = %v, want just the file (no -v)", got)
+	}
+	if got := afplayArgs(-1, "/tmp/x.aiff"); !reflect.DeepEqual(got, []string{"/tmp/x.aiff"}) {
+		t.Errorf("afplayArgs(-1) = %v, want just the file (no -v)", got)
+	}
+	if got := afplayArgs(0.5, "/tmp/x.aiff"); !reflect.DeepEqual(got, []string{"-v", "0.5", "/tmp/x.aiff"}) {
+		t.Errorf("afplayArgs(0.5) = %v, want -v 0.5 <file>", got)
+	}
+	// The file is always the final arg so it can never be parsed as a flag value.
+	got := afplayArgs(1, "/tmp/x.aiff")
+	if got[len(got)-1] != "/tmp/x.aiff" {
+		t.Errorf("afplayArgs: file not last: %v", got)
+	}
+}
+
 func TestNewPlayerCreates0700Dir(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir()) // keep os.TempDir() inside the sandbox
-	p, err := NewPlayer()
+	p, err := NewPlayer(0)
 	if err != nil {
 		t.Fatalf("NewPlayer() error: %v", err)
 	}

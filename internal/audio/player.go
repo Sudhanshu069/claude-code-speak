@@ -11,16 +11,20 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 )
 
 // AfplayPlayer runs afplay against temp files in an owner-only temp dir. It is
 // the production implementation of the Player interface the Queue drives.
 type AfplayPlayer struct {
-	dir string // 0700 temp dir
+	dir    string  // 0700 temp dir
+	volume float64 // afplay -v; <= 0 means "don't pass -v" (system default)
 }
 
-// NewPlayer creates the 0700 temp dir and returns an *AfplayPlayer.
-func NewPlayer() (*AfplayPlayer, error) {
+// NewPlayer creates the 0700 temp dir and returns an *AfplayPlayer. volume <= 0
+// leaves playback at the system default; > 0 is passed to afplay's -v (1.0 is
+// normal, higher amplifies).
+func NewPlayer(volume float64) (*AfplayPlayer, error) {
 	dir := filepath.Join(os.TempDir(), "claude-says-audio")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
@@ -28,7 +32,18 @@ func NewPlayer() (*AfplayPlayer, error) {
 	// Tighten perms even if the dir already existed with looser bits: the temp
 	// files hold the audio of the user's session.
 	_ = os.Chmod(dir, 0o700)
-	return &AfplayPlayer{dir: dir}, nil
+	return &AfplayPlayer{dir: dir, volume: volume}, nil
+}
+
+// afplayArgs builds the argument vector for `afplay` as a pure function so the
+// volume flag can be asserted in tests without spawning afplay. Volume is only
+// added when > 0; the file path is always last. The path is a self-generated
+// absolute temp path, so no end-of-options guard is needed.
+func afplayArgs(volume float64, file string) []string {
+	if volume > 0 {
+		return []string{"-v", strconv.FormatFloat(volume, 'g', -1, 64), file}
+	}
+	return []string{file}
 }
 
 // Play writes audio to a 0600 temp file (unpredictable name) and runs `afplay`
@@ -49,7 +64,7 @@ func (p *AfplayPlayer) Play(ctx context.Context, audio []byte, format string) er
 	}
 	defer os.Remove(tmp)
 
-	cmd := exec.CommandContext(ctx, "afplay", tmp)
+	cmd := exec.CommandContext(ctx, "afplay", afplayArgs(p.volume, tmp)...)
 	if err := cmd.Run(); err != nil {
 		// A cancelled/expired ctx means pause/switch/shutdown killed afplay
 		// intentionally. Surface it as ctx.Err() (context.Canceled or
