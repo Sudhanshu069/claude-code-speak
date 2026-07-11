@@ -128,21 +128,27 @@ claude-says start -s <id>      # Listen to a specific session
 claude-says start --narrator   # Enable LLM narrator mode
 claude-says start --voice "Daniel"
 claude-says start --rate 150
-claude-says start --skip "let me" --skip "now i" --dedupe   # Quiet the chatter (see below)
+claude-says start --verbatim   # Hear everything, no filtering (see below)
 claude-says voices             # List available macOS voices
 claude-says --version
 ```
 
 ### Filtering what gets spoken
 
-Only the assistant's prose is voiced (tool calls are never read), and code fences, markdown, URLs, and file paths are already stripped. Two flags trim the rest of the noise:
+`claude-says` aims to sound clean out of the box, so it filters noise **by default** — you don't configure anything to get a good experience. Only the assistant's prose is ever voiced (tool calls are never read), code fences, markdown, URLs, and file paths are stripped, and on top of that:
+
+- **Filler is trimmed.** Whole-sentence acknowledgements ("Got it.", "Makes sense.") and *short* action announcements ("Let me check.", "Now I'll do that.") are dropped. Substantive sentences are kept even when they open with "Let me" — e.g. *"Let me check the config for the timeout."* is spoken; the length is the guard.
+- **Repeats are collapsed.** A sentence identical to the one just spoken is dropped.
+
+If you'd rather hear more (or everything), opt out:
 
 | Flag | Effect |
 |------|--------|
-| `--skip <text>` | Mute any sentence containing `<text>` (case-insensitive). Repeatable — e.g. `--skip "let me" --skip "now i'll"` silences the interstitial "Let me check…" / "Now I'll…" filler between tool calls. |
-| `--dedupe` | Collapse a sentence that's identical to the one just spoken (consecutive only). |
+| `--verbatim` | Turn **all** filtering off — speak the raw stream exactly as written (also ignores `--skip`). |
+| `--no-dedupe` | Allow consecutive identical sentences. |
+| `--skip <text>` | *Add* your own mute: drop any sentence containing `<text>` (case-insensitive, repeatable). |
 
-Filtered sentences are dropped before they're queued, so nothing stalls or plays out of order. Both also persist in the config file (`textProcessor.skip`, `textProcessor.dedupe`).
+Filtered sentences are dropped before they're queued, so nothing ever stalls or plays out of order. All of this persists in the config file (`textProcessor.dedupe`, `textProcessor.filterFiller`, `textProcessor.skip`).
 
 ## Controls (in the TUI)
 
@@ -179,7 +185,7 @@ Settings live in `~/.claude-says/config.json` (owner-only, `0600`) and are merge
 {
   "provider": "macos",
   "macos": { "voice": "Samantha", "rate": 200 },
-  "textProcessor": { "minChunkLength": 10, "maxChunkLength": 500, "flushDelay": 1500, "skip": [], "dedupe": false },
+  "textProcessor": { "minChunkLength": 10, "maxChunkLength": 500, "flushDelay": 1500, "dedupe": true, "filterFiller": true, "skip": [] },
   "narrator": {
     "enabled": false,
     "provider": "gemini",

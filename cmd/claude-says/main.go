@@ -46,7 +46,8 @@ type startOptions struct {
 	Narrator         bool
 	NarratorProvider string
 	Skip             []string
-	Dedupe           bool
+	NoDedupe         bool
+	Verbatim         bool
 }
 
 func main() {
@@ -175,8 +176,9 @@ func bindStartFlags(fs *pflag.FlagSet, o *startOptions) {
 	fs.StringVarP(&o.Voice, "voice", "v", "", "macOS voice name")
 	fs.BoolVarP(&o.Narrator, "narrator", "n", false, "Enable narrator mode")
 	fs.StringVar(&o.NarratorProvider, "narrator-provider", "", "Narrator LLM provider (default: gemini)")
-	fs.StringArrayVar(&o.Skip, "skip", nil, "Mute spoken sentences containing this text (case-insensitive; repeatable)")
-	fs.BoolVar(&o.Dedupe, "dedupe", false, "Collapse consecutive identical sentences")
+	fs.StringArrayVar(&o.Skip, "skip", nil, "Also mute spoken sentences containing this text (case-insensitive; repeatable)")
+	fs.BoolVar(&o.NoDedupe, "no-dedupe", false, "Allow consecutive identical sentences (dedupe is on by default)")
+	fs.BoolVar(&o.Verbatim, "verbatim", false, "Speak the raw stream: no dedupe, no filler filter, ignore --skip")
 }
 
 // registerStartCompletions wires shell tab-completion for the start flags:
@@ -236,12 +238,19 @@ func applyOverrides(cfg config.Config, o startOptions) config.Config {
 			cfg.Narrator.Provider = o.NarratorProvider
 		}
 	}
-	// --skip flags ADD to any patterns already in the config file.
+	// Content filtering (dedupe + filler) is ON by default via config; these
+	// flags opt OUT. --skip ADDS personal mute patterns on top.
 	if len(o.Skip) > 0 {
 		cfg.TextProcessor.Skip = append(cfg.TextProcessor.Skip, o.Skip...)
 	}
-	if o.Dedupe {
-		cfg.TextProcessor.Dedupe = true
+	if o.NoDedupe {
+		cfg.TextProcessor.Dedupe = false
+	}
+	if o.Verbatim {
+		// Hear everything, exactly as written.
+		cfg.TextProcessor.Dedupe = false
+		cfg.TextProcessor.FilterFiller = false
+		cfg.TextProcessor.Skip = nil
 	}
 	return cfg
 }

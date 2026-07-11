@@ -28,13 +28,15 @@ type MacosConfig struct {
 }
 
 // TextProcessorConfig configures sentence buffering/splitting and content
-// filtering.
+// filtering. Dedupe and FilterFiller default ON (see DefaultConfig) so the
+// companion sounds clean out of the box; --verbatim / --no-dedupe opt out.
 type TextProcessorConfig struct {
 	MinChunkLength int      `json:"minChunkLength"`
 	MaxChunkLength int      `json:"maxChunkLength"`
-	FlushDelay     int      `json:"flushDelay"` // ms; Node text-processor.js default 1500
-	Skip           []string `json:"skip"`       // drop spoken sentences containing any of these (case-insensitive)
-	Dedupe         bool     `json:"dedupe"`     // collapse consecutive identical sentences
+	FlushDelay     int      `json:"flushDelay"`     // ms; Node text-processor.js default 1500
+	Skip           []string `json:"skip"`           // drop spoken sentences containing any of these (case-insensitive)
+	Dedupe         bool     `json:"dedupe"`         // collapse consecutive identical sentences
+	FilterFiller   bool     `json:"filterFiller"`   // drop pure filler (acks + short "Let me…" announcements)
 }
 
 // NarratorConfig configures the optional LLM narrator.
@@ -61,6 +63,8 @@ func DefaultConfig() Config {
 			MinChunkLength: 10,
 			MaxChunkLength: 500,
 			FlushDelay:     1500,
+			Dedupe:         true, // collapse back-to-back repeats out of the box
+			FilterFiller:   true, // trim pure filler out of the box
 		},
 		Narrator: NarratorConfig{
 			Enabled:  false,

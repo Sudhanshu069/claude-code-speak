@@ -145,10 +145,11 @@ func newWithDeps(cfg config.Config, opts Options, provider tts.Provider, player 
 	queue := audio.NewQueue(player, eventBuf)
 
 	proc := textproc.New(textproc.Options{
-		MinChunkLen: cfg.TextProcessor.MinChunkLength,
-		MaxChunkLen: cfg.TextProcessor.MaxChunkLength,
-		Skip:        cfg.TextProcessor.Skip,
-		Dedupe:      cfg.TextProcessor.Dedupe,
+		MinChunkLen:  cfg.TextProcessor.MinChunkLength,
+		MaxChunkLen:  cfg.TextProcessor.MaxChunkLength,
+		Skip:         cfg.TextProcessor.Skip,
+		Dedupe:       cfg.TextProcessor.Dedupe,
+		FilterFiller: cfg.TextProcessor.FilterFiller,
 	})
 
 	return &Daemon{

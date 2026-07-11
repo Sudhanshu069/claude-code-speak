@@ -20,12 +20,16 @@ type Sentence struct {
 }
 
 // Options tunes chunking and content filtering. Zero values fall back to the
-// defaults below; nil/false Skip/Dedupe mean "no filtering".
+// defaults below; nil/false Skip/Dedupe/FilterFiller mean "no filtering". The
+// on-by-default behavior (dedupe + filler) lives in config.DefaultConfig, not
+// here, so a bare New(Options{}) stays unfiltered for tests and callers that
+// want the raw stream.
 type Options struct {
-	MinChunkLen int      // default 10
-	MaxChunkLen int      // default 500
-	Skip        []string // drop any cleaned sentence containing one of these (case-insensitive)
-	Dedupe      bool     // drop a cleaned sentence identical to the previous emitted one
+	MinChunkLen  int      // default 10
+	MaxChunkLen  int      // default 500
+	Skip         []string // drop any cleaned sentence containing one of these (case-insensitive)
+	Dedupe       bool     // drop a cleaned sentence identical to the previous emitted one
+	FilterFiller bool     // drop pure conversational filler (acks + short action announcements)
 }
 
 const (
@@ -208,6 +212,9 @@ func (p *Processor) emit(text string) (Sentence, bool) {
 	if p.skipMatch(cleaned) {
 		return Sentence{}, false
 	}
+	if p.opts.FilterFiller && isFiller(cleaned) {
+		return Sentence{}, false
+	}
 	if p.opts.Dedupe && strings.EqualFold(cleaned, p.last) {
 		return Sentence{}, false
 	}
@@ -226,6 +233,53 @@ func (p *Processor) skipMatch(cleaned string) bool {
 	for _, s := range p.skips {
 		if strings.Contains(lc, s) {
 			return true
+		}
+	}
+	return false
+}
+
+// fillerMaxLen gates the action-announcement rule: a sentence that merely
+// starts with "Let me …"/"Now I'll …" is dropped ONLY when this short, so a
+// substantive "Let me check the config for the timeout." (long) survives while a
+// bare "Let me check." (short) does not. This length gate is the primary
+// false-positive guard for the default-on filler filter.
+const fillerMaxLen = 28
+
+// fillerLeads are the openings of bare action announcements. Matched as a
+// prefix of the normalized sentence and only applied under fillerMaxLen.
+var fillerLeads = []string{
+	"let me", "let's", "let us", "now let me", "now let's",
+	"now i'll", "now i will", "now i'm", "now i am",
+	"i'll ", "i will ", "i'm going", "i am going",
+	"next i'll", "next i will", "next, i", "next let",
+	"then i'll", "then i will",
+	"first, let", "first let me",
+	"okay, let", "ok, let", "alright, let",
+}
+
+// fillerAcks are whole-sentence acknowledgements with no content of their own.
+// Single-word acks ("Perfect.", "Done.") already fall below MinChunkLen; these
+// are the multi-word ones that clear it.
+var fillerAcks = map[string]struct{}{
+	"got it": {}, "makes sense": {}, "that makes sense": {},
+	"sounds good": {}, "looks good": {}, "no problem": {},
+	"all set": {}, "that works": {}, "there we go": {},
+	"will do": {}, "on it": {}, "understood": {},
+}
+
+// isFiller reports whether a cleaned sentence is pure conversational filler:
+// a whole-sentence acknowledgement, or a SHORT bare action announcement. Long
+// sentences that merely start with "Let me" carry real detail and are kept.
+func isFiller(cleaned string) bool {
+	norm := strings.ToLower(strings.Trim(cleaned, " .!?,"))
+	if _, ok := fillerAcks[norm]; ok {
+		return true
+	}
+	if len(cleaned) <= fillerMaxLen {
+		for _, lead := range fillerLeads {
+			if strings.HasPrefix(norm, lead) {
+				return true
+			}
 		}
 	}
 	return false

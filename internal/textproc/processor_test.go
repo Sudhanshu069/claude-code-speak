@@ -249,3 +249,49 @@ func TestNoFiltersEmitsAll(t *testing.T) {
 		t.Fatalf("got %d, want 2 (no dedupe unless enabled): %+v", len(got), got)
 	}
 }
+
+// isFiller: whole-sentence acks and SHORT action announcements are filler; a
+// long sentence that merely opens with "Let me" carries detail and is kept.
+func TestIsFiller(t *testing.T) {
+	filler := []string{
+		"Let me check.",
+		"Let me take a look.",
+		"Now I'll do that.",
+		"I'll fix it now.",
+		"Makes sense.",
+		"No problem.",
+		"That makes sense.",
+	}
+	for _, s := range filler {
+		if !isFiller(s) {
+			t.Errorf("isFiller(%q) = false, want true", s)
+		}
+	}
+	keep := []string{
+		"Let me check the config for the timeout.", // long "Let me …" keeps its detail
+		"The tests all pass now.",
+		"I found the root cause in the parser.",
+		"This sentence has real substance to it.",
+	}
+	for _, s := range keep {
+		if isFiller(s) {
+			t.Errorf("isFiller(%q) = true, want false (substantive)", s)
+		}
+	}
+}
+
+// --filter-filler drops filler in-stream WITHOUT consuming a seq, so survivors
+// stay contiguously numbered.
+func TestFillerFilterKeepsSeqContiguous(t *testing.T) {
+	p := New(Options{FilterFiller: true})
+	got := p.Feed("Let me check. This is a substantive sentence with detail here. Makes sense. Now I'll do that. The final result is everything passes here. ")
+	if len(got) != 2 {
+		t.Fatalf("got %d sentences, want 2 (3 filler dropped): %+v", len(got), got)
+	}
+	if got[0].Seq != 1 || got[1].Seq != 2 {
+		t.Fatalf("seqs = %d,%d, want contiguous 1,2", got[0].Seq, got[1].Seq)
+	}
+	if got[0].Text != "This is a substantive sentence with detail here." || got[1].Text != "The final result is everything passes here." {
+		t.Fatalf("survivors = %q, %q", got[0].Text, got[1].Text)
+	}
+}

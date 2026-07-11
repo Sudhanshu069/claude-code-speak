@@ -27,6 +27,8 @@ func TestDefaultConfig(t *testing.T) {
 			MinChunkLength: 10,
 			MaxChunkLength: 500,
 			FlushDelay:     1500,
+			Dedupe:         true,
+			FilterFiller:   true,
 		},
 		Narrator: NarratorConfig{
 			Enabled:  false,
