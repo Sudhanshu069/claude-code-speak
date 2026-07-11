@@ -1,10 +1,10 @@
 // Package daemon is the orchestrator. It owns a single select loop that wires
-// (watcher|ipc) -> textproc -> synth -> queue -> player, and is the ONLY place
-// ItemIDs are stamped, so epoch bumps (session switch) and seq assignment can
-// never interleave. Every session/reset gets a new epoch (generation counter);
-// the queue drops any synth result whose epoch != current, which is the
-// structural fix for Node's cross-session audio bleed. Per-sentence failures
-// are isolated and every network call is deadline-bounded.
+// the transcript watcher -> textproc -> synth -> queue -> player, and is the
+// ONLY place ItemIDs are stamped, so epoch bumps (session switch) and seq
+// assignment can never interleave. Every session/reset gets a new epoch
+// (generation counter); the queue drops any synth result whose epoch != current,
+// which is the structural fix for Node's cross-session audio bleed. Per-sentence
+// failures are isolated and every synth call is deadline-bounded.
 package daemon
 
 import (
@@ -16,7 +16,6 @@ import (
 
 	"github.com/Sudhanshu069/claude-says/internal/audio"
 	"github.com/Sudhanshu069/claude-says/internal/config"
-	"github.com/Sudhanshu069/claude-says/internal/ipc"
 	"github.com/Sudhanshu069/claude-says/internal/narrator"
 	"github.com/Sudhanshu069/claude-says/internal/session"
 	"github.com/Sudhanshu069/claude-says/internal/textproc"
@@ -36,18 +35,12 @@ const (
 // their own bound.
 const quitDrainTimeout = 10 * time.Second
 
-// maxIPCText caps text accepted from a hook/IPC message so a rogue local client
-// can't push a huge payload into the pipeline (and on to paid cloud TTS/LLM
-// APIs). Mirrors Node's MAX_IPC_TEXT.
-const maxIPCText = 100 * 1024
-
 // eventBuf sizes the TUI events channel. It must be buffered so UI slowness can
 // never stall playback; emits are non-blocking and drop when full.
 const eventBuf = 256
 
 // Options configures a Daemon. Zero-valued durations fall back to the defaults.
 type Options struct {
-	Provider       string
 	SessionID      string
 	TranscriptPath string
 	NarratorOn     bool
@@ -79,9 +72,13 @@ type Daemon struct {
 
 	// Channels wired inside Run. events carries daemon -> TUI notifications;
 	// ctrl carries TUI -> daemon controls (also fed by the exported control
-	// methods). stopCh/runDone coordinate a single graceful shutdown.
+	// methods). inject is the text-source seam: Run feeds anything sent here
+	// into the pipeline exactly as it feeds watcher events, which lets the
+	// pipeline tests drive text in without standing up a transcript file.
+	// stopCh/runDone coordinate a single graceful shutdown.
 	events   chan tui.Event
 	ctrl     chan tui.Control
+	inject   chan string
 	stopCh   chan stopReq
 	runDone  chan struct{}
 	stopOnce sync.Once
@@ -103,9 +100,6 @@ type Daemon struct {
 // optional narrator, and afplay player, then delegating to newWithDeps to wire
 // the queue and processor. Tests construct a Daemon via newWithDeps with fakes.
 func New(cfg config.Config, opts Options) (*Daemon, error) {
-	if opts.Provider != "" {
-		cfg.Provider = opts.Provider
-	}
 	narratorOn := cfg.Narrator.Enabled || opts.NarratorOn
 
 	provider, err := tts.New(&cfg)
@@ -168,6 +162,7 @@ func newWithDeps(cfg config.Config, opts Options, provider tts.Provider, player 
 		initialTranscriptPath: opts.TranscriptPath,
 		events:                make(chan tui.Event, eventBuf),
 		ctrl:                  make(chan tui.Control, 16),
+		inject:                make(chan string, 16),
 		stopCh:                make(chan stopReq),
 		runDone:               make(chan struct{}),
 	}, nil
@@ -180,10 +175,10 @@ func (d *Daemon) Events() <-chan tui.Event { return d.events }
 // Pause/Resume/SwitchSession methods feed the same channel.
 func (d *Daemon) Controls() chan<- tui.Control { return d.ctrl }
 
-// Run owns the single select loop that wires watcher|ipc -> processor -> synth
-// -> queue -> player. It is the only place ItemIDs are stamped, so epoch bumps
-// and seq assignment never interleave. It returns when ctx is done or after a
-// graceful drain (Stop / TUI quit).
+// Run owns the single select loop that wires the transcript watcher ->
+// processor -> synth -> queue -> player. It is the only place ItemIDs are
+// stamped, so epoch bumps and seq assignment never interleave. It returns when
+// ctx is done or after a graceful drain (Stop / TUI quit).
 func (d *Daemon) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -192,17 +187,6 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	// Queue drain goroutine (sole caller of player.Play).
 	go d.queue.Run(ctx)
-
-	// IPC/hook fallback server. Feeding from it is gated on "no active watcher".
-	var ipcMessages <-chan ipc.Message
-	if sockPath, err := config.SocketPath(); err != nil {
-		slog.Warn("ipc disabled: socket path unavailable", "err", err)
-	} else if srv, err := ipc.NewServer(sockPath); err != nil {
-		slog.Warn("ipc disabled: could not bind socket", "err", err)
-	} else {
-		go func() { _ = srv.Serve(ctx) }()
-		ipcMessages = srv.Messages()
-	}
 
 	// Choose the initial text source (mirrors Node start()).
 	d.selectInitialSource(ctx)
@@ -266,19 +250,19 @@ func (d *Daemon) Run(ctx context.Context) error {
 			if path, ok, err := session.FindTranscript(id); err != nil {
 				slog.Error("session lookup failed", "id", id, "err", err)
 				d.sessionID = id
-				d.emitStatus("Session lookup failed; listening via hooks")
+				d.emitStatus("Session lookup failed")
 			} else if ok {
 				d.startWatcher(ctx, path, id)
 			} else {
 				d.sessionID = id
-				d.emitStatus(fmt.Sprintf("No transcript for %s; listening via hooks", shortID(id)))
+				d.emitStatus(fmt.Sprintf("No transcript for %s", shortID(id)))
 			}
 		} else {
-			// No id: tear the watcher down entirely so the hook/IPC fallback
-			// (gated on watcher==nil) actually re-enables.
+			// No id: tear the watcher down entirely. With no transcript to follow
+			// the daemon is idle until the next switch picks a session.
 			d.sessionID = ""
 			d.transcriptPath = ""
-			d.emitStatus("Listening to all sessions (hooks only)")
+			d.emitStatus("No session selected — press s to choose one")
 		}
 		d.emit(tui.Event{Kind: tui.EventSessionSwitched, Epoch: d.epoch, Session: d.sessionID, Time: time.Now()})
 	}
@@ -312,19 +296,18 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 		case ev, ok := <-d.watcherEvents:
 			if !ok {
-				// The active watcher stopped (only happens on our cancel);
-				// fall back to hook/IPC until the next switch.
+				// The active watcher stopped (only happens on our cancel); go idle
+				// until the next switch points us at a new transcript.
 				d.watcherEvents = nil
 				d.watcher = nil
 				continue
 			}
 			feed(ev.Text)
 
-		case msg := <-ipcMessages:
-			if d.stopping || d.watcher != nil || msg.Type != "text" {
-				continue
-			}
-			feed(clip(msg.Text))
+		case text := <-d.inject:
+			// Text-source seam (see the inject field): feed it exactly like a
+			// watcher event so the pipeline behaves identically under test.
+			feed(text)
 
 		case qe := <-d.queue.Events():
 			d.forwardQueueEvent(qe)
@@ -339,8 +322,8 @@ func (d *Daemon) Run(ctx context.Context) error {
 }
 
 // selectInitialSource picks the initial text source: an explicit transcript
-// path, an explicit session id (falling back to hooks if unknown), else the
-// most recently active session (else hooks). Mirrors Node start().
+// path, an explicit session id (idle if unknown), else the most recently
+// active session (else idle). Mirrors Node start().
 func (d *Daemon) selectInitialSource(ctx context.Context) {
 	switch {
 	case d.initialTranscriptPath != "":
@@ -350,14 +333,14 @@ func (d *Daemon) selectInitialSource(ctx context.Context) {
 			d.startWatcher(ctx, path, d.initialSessionID)
 		} else {
 			d.sessionID = d.initialSessionID
-			d.emitStatus(fmt.Sprintf("No transcript for %s; listening via hooks", shortID(d.initialSessionID)))
+			d.emitStatus(fmt.Sprintf("No transcript for %s", shortID(d.initialSessionID)))
 		}
 	default:
 		if s, ok, err := session.MostRecent(); err == nil && ok {
 			slog.Info("auto-detected session", "id", shortID(s.ID), "project", s.ProjectName)
 			d.startWatcher(ctx, s.TranscriptPath, s.ID)
 		} else {
-			d.emitStatus("No sessions found; listening via hooks")
+			d.emitStatus("No sessions found — press s to choose one")
 		}
 	}
 }
@@ -430,8 +413,8 @@ func (d *Daemon) forwardQueueEvent(qe audio.Event) {
 }
 
 // SwitchSession bumps the epoch, resets the processor, and re-points the watcher
-// (or tears it down to re-enable the hook/IPC fallback). Safe from any
-// goroutine; the work runs in Run's loop.
+// (or tears it down to go idle when id is empty). Safe from any goroutine; the
+// work runs in Run's loop.
 func (d *Daemon) SwitchSession(id string) {
 	d.sendCtrl(tui.Control{Kind: tui.ControlSwitch, SessionID: id})
 }
@@ -566,14 +549,6 @@ func (d *Daemon) emit(ev tui.Event) {
 func (d *Daemon) emitStatus(text string) {
 	slog.Info(text)
 	d.emit(tui.Event{Kind: tui.EventStatus, Epoch: d.epoch, Text: text, Session: d.sessionID, Time: time.Now()})
-}
-
-// clip bounds untrusted IPC text to maxIPCText bytes.
-func clip(s string) string {
-	if len(s) > maxIPCText {
-		return s[:maxIPCText]
-	}
-	return s
 }
 
 // shortID renders a session id's leading 8 chars for logs/status, matching the

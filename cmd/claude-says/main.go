@@ -1,14 +1,12 @@
-// Command claude-says is the single static binary for the TTS companion. It
-// mirrors the Node commander tree: a root command that runs `start` by default,
-// plus setup, sessions, providers, voices, and hook subcommands. The Node
-// bin/claude-says-hook.js becomes the `hook` subcommand (see hook.go) so there
-// is exactly one binary.
+// Command claude-says is the single static binary for the TTS companion: a root
+// command that runs `start` by default, plus `voices` for listing macOS voices.
+// It follows a Claude Code transcript and speaks new assistant text via macOS
+// `say`.
 package main
 
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -22,7 +20,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"github.com/Sudhanshu069/claude-says/internal/audio"
 	"github.com/Sudhanshu069/claude-says/internal/config"
 	"github.com/Sudhanshu069/claude-says/internal/daemon"
 	"github.com/Sudhanshu069/claude-says/internal/logx"
@@ -40,10 +37,8 @@ const shutdownDrainTimeout = 5 * time.Second
 // via -ldflags "-X main.version=...".
 var version = "2.0.0-dev"
 
-// startOptions holds the CLI flags for the default/start action, mirroring the
-// Node start command one-for-one.
+// startOptions holds the CLI flags for the default/start action.
 type startOptions struct {
-	Provider         string
 	Session          string
 	List             bool
 	Rate             int
@@ -78,12 +73,8 @@ func newRootCmd() *cobra.Command {
 	registerStartCompletions(root)
 	root.AddCommand(
 		newStartCmd(),
-		newSetupCmd(),
-		newUninstallCmd(),
-		newSessionsCmd(),
-		newProvidersCmd(),
 		newVoicesCmd(),
-		newHookCmd(),
+		newUninstallCmd(),
 	)
 	return root
 }
@@ -105,49 +96,6 @@ func newStartCmd() *cobra.Command {
 	return cmd
 }
 
-// newSetupCmd configures the TTS provider and installs the Claude Code hook.
-func newSetupCmd() *cobra.Command {
-	var provider string
-	cmd := &cobra.Command{
-		Use:           "setup",
-		Short:         "Configure TTS provider and install Claude Code hook",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSetup(provider)
-		},
-	}
-	cmd.Flags().StringVarP(&provider, "provider", "p", "", "TTS provider")
-	_ = cmd.RegisterFlagCompletionFunc("provider", completeProvider)
-	return cmd
-}
-
-// newSessionsCmd lists discovered Claude Code sessions.
-func newSessionsCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:           "sessions",
-		Short:         "List discovered Claude Code sessions",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSessions()
-		},
-	}
-}
-
-// newProvidersCmd lists available TTS providers.
-func newProvidersCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:           "providers",
-		Short:         "List available TTS providers",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runProviders()
-		},
-	}
-}
-
 // newVoicesCmd lists available TTS voices.
 func newVoicesCmd() *cobra.Command {
 	var all bool
@@ -164,27 +112,61 @@ func newVoicesCmd() *cobra.Command {
 	return cmd
 }
 
-// newHookCmd is the Claude Code Stop-hook entry point (see hook.go). The hidden
-// --debug flag replaces Node's bin/debug-hook.js: it dumps the raw stdin payload
-// to a 0600 temp log before normal processing.
-func newHookCmd() *cobra.Command {
+// newUninstallCmd removes the ~/.claude-says config dir. It does not delete the
+// binary itself (a running program can't reliably remove itself) — it prints the
+// path to remove.
+func newUninstallCmd() *cobra.Command {
+	var keepConfig bool
 	cmd := &cobra.Command{
-		Use:    "hook",
-		Short:  "Claude Code Stop-hook: forward transcript text to the daemon",
-		Hidden: true,
+		Use:           "uninstall",
+		Short:         "Remove ~/.claude-says config (and print the binary path to delete)",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runHook(cmd, args)
+			return runUninstall(keepConfig)
 		},
 	}
-	cmd.Flags().Bool("debug", false, "Dump the raw hook payload to a temp debug log")
-	_ = cmd.Flags().MarkHidden("debug")
+	cmd.Flags().BoolVar(&keepConfig, "keep-config", false, "Keep ~/.claude-says (config)")
 	return cmd
+}
+
+// runUninstall removes ~/.claude-says (unless --keep-config) and points at the
+// binary. claude-says no longer installs anything into Claude Code, so there is
+// no Stop hook to strip from ~/.claude/settings.json.
+func runUninstall(keepConfig bool) error {
+	fmt.Println("claude-says — Uninstall")
+	fmt.Println()
+
+	// Remove ~/.claude-says (config.json), unless kept.
+	switch {
+	case keepConfig:
+		fmt.Println("  · Kept ~/.claude-says (--keep-config)")
+	default:
+		if dir, err := config.ConfigDir(); err != nil {
+			fmt.Printf("  ! Could not resolve the config dir: %v\n", err)
+		} else if _, err := os.Stat(dir); os.IsNotExist(err) {
+			fmt.Println("  · No ~/.claude-says directory")
+		} else if err := os.RemoveAll(dir); err != nil {
+			fmt.Printf("  ! Could not remove %s: %v\n", dir, err)
+		} else {
+			fmt.Printf("  ✓ Removed %s (config)\n", dir)
+		}
+	}
+
+	// Point at the binary — a running program can't cleanly delete itself.
+	if exe, err := os.Executable(); err == nil {
+		if resolved, rerr := filepath.EvalSymlinks(exe); rerr == nil {
+			exe = resolved
+		}
+		fmt.Printf("\n  To remove the binary:  rm %s\n", exe)
+	}
+	fmt.Println("\nDone. If the daemon is still running, quit it (press q in the TUI, or kill the process).")
+	return nil
 }
 
 // bindStartFlags registers the start flags on fs, bound to o. Both the root and
 // the explicit `start` command call this so the two paths stay identical.
 func bindStartFlags(fs *pflag.FlagSet, o *startOptions) {
-	fs.StringVarP(&o.Provider, "provider", "p", "", "TTS provider")
 	fs.StringVarP(&o.Session, "session", "s", "", "Listen to a specific session ID")
 	fs.BoolVarP(&o.List, "list", "l", false, "List available sessions and pick one")
 	fs.IntVarP(&o.Rate, "rate", "r", 0, "Speech rate in words per minute (default: 200)")
@@ -194,10 +176,9 @@ func bindStartFlags(fs *pflag.FlagSet, o *startOptions) {
 }
 
 // registerStartCompletions wires shell tab-completion for the start flags:
-// `--voice <TAB>` cycles macOS voices, `--provider <TAB>` the TTS providers.
+// `--voice <TAB>` cycles the installed macOS voices.
 func registerStartCompletions(cmd *cobra.Command) {
 	_ = cmd.RegisterFlagCompletionFunc("voice", completeVoice)
-	_ = cmd.RegisterFlagCompletionFunc("provider", completeProvider)
 }
 
 // completeVoice offers the installed macOS `say` voices for --voice completion,
@@ -237,17 +218,8 @@ func completeVoice(_ *cobra.Command, _ []string, toComplete string) ([]string, c
 	return comps, cobra.ShellCompDirectiveNoFileComp
 }
 
-// completeProvider offers the registered TTS providers for --provider completion.
-func completeProvider(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-	return tts.List(), cobra.ShellCompDirectiveNoFileComp
-}
-
-// applyOverrides layers CLI flags onto a loaded config, mirroring the Node
-// daemon constructor's override precedence.
+// applyOverrides layers CLI flags onto a loaded config.
 func applyOverrides(cfg config.Config, o startOptions) config.Config {
-	if o.Provider != "" {
-		cfg.Provider = o.Provider
-	}
 	if o.Rate != 0 {
 		cfg.Macos.Rate = o.Rate
 	}
@@ -282,7 +254,6 @@ func runStart(cmd *cobra.Command, o *startOptions) error {
 	}
 
 	d, err := daemon.New(cfg, daemon.Options{
-		Provider:       cfg.Provider,
 		SessionID:      sessionID,
 		TranscriptPath: transcriptPath,
 		NarratorOn:     cfg.Narrator.Enabled,
@@ -336,7 +307,7 @@ func runStart(cmd *cobra.Command, o *startOptions) error {
 
 // resolveSession picks the transcript to follow: an explicit --session, an
 // interactive --list pick, or the most-recent session. An empty (id, path) with
-// proceed=true means all-sessions/hook mode; proceed=false means the --list
+// proceed=true means start idle with no session; proceed=false means the --list
 // picker was cancelled and the caller should exit cleanly.
 func resolveSession(o *startOptions) (sessionID, transcriptPath string, proceed bool, err error) {
 	switch {
@@ -346,7 +317,7 @@ func resolveSession(o *startOptions) (sessionID, transcriptPath string, proceed 
 			return "", "", false, nil // cancelled
 		}
 		if all {
-			return "", "", true, nil // all-sessions mode
+			return "", "", true, nil // start idle, no session
 		}
 		return picked.ID, picked.TranscriptPath, true, nil
 	case o.Session != "":
@@ -355,139 +326,19 @@ func resolveSession(o *startOptions) (sessionID, transcriptPath string, proceed 
 			return "", "", false, ferr
 		}
 		if !ok {
-			// Node started the daemon anyway and listened via hooks rather than
-			// hard-erroring. Proceed with the id and an empty path; the daemon's
-			// selectInitialSource then logs "No transcript for <id>; listening
-			// via hooks" and falls back to the hook/IPC source.
+			// Unknown id: start anyway with an empty path. The daemon's
+			// selectInitialSource logs "No transcript for <id>" and stays idle
+			// until a switch points it at a real transcript.
 			return o.Session, "", true, nil
 		}
 		return o.Session, path, true, nil
 	default:
 		s, ok, ferr := session.MostRecent()
 		if ferr != nil || !ok {
-			return "", "", true, nil // nothing yet: fall back to all-sessions/hook mode
+			return "", "", true, nil // nothing yet: start idle
 		}
 		return s.ID, s.TranscriptPath, true, nil
 	}
-}
-
-// runSetup mirrors Node src/setup.js: validate the provider, test playback,
-// install the Stop hook, and persist config. It returns an error on any failing
-// step so the CLI exits non-zero.
-func runSetup(provider string) error {
-	fmt.Println("claude-says — Setup")
-	fmt.Println()
-
-	cfg, _ := config.Load()
-	if provider != "" {
-		cfg.Provider = provider
-	}
-
-	fmt.Printf("TTS Provider: %s\n", cfg.Provider)
-	fmt.Printf("Available providers: %s\n\n", strings.Join(providerNames(), ", "))
-
-	prov, err := tts.New(&cfg)
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("Validating TTS credentials...")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if verr := prov.Validate(ctx); verr != nil {
-		fmt.Fprintf(os.Stderr, "TTS validation failed: %v\n\n", verr)
-		printProviderHelp(cfg.Provider)
-		return errors.New("TTS validation failed")
-	}
-	fmt.Println("TTS credentials valid!")
-	fmt.Println()
-
-	fmt.Println("Testing audio playback...")
-	audioBytes, format, serr := prov.Synthesize(ctx, "claude-says is ready.")
-	if serr != nil {
-		return fmt.Errorf("audio synthesis failed: %w", serr)
-	}
-	player, perr := audio.NewPlayer()
-	if perr != nil {
-		return fmt.Errorf("audio playback failed: %w", perr)
-	}
-	if err := player.Play(ctx, audioBytes, format); err != nil {
-		return fmt.Errorf("audio playback failed: %w", err)
-	}
-	fmt.Println("Audio playback works!")
-	fmt.Println()
-
-	fmt.Println("Installing Stop hook...")
-	hookInstalled := installHook()
-	if hookInstalled {
-		fmt.Println("Hook installed successfully!")
-	} else {
-		fmt.Println("Hook installation failed — you may need to add it manually.")
-	}
-	fmt.Println()
-
-	if err := cfg.Save(); err != nil {
-		return fmt.Errorf("saving config: %w", err)
-	}
-	fmt.Println("Configuration saved.")
-	fmt.Println()
-
-	if hookInstalled {
-		fmt.Println("Setup complete! Start the daemon with:")
-		fmt.Println("  claude-says")
-		fmt.Println()
-		fmt.Println("Then use Claude Code normally — you'll hear it speak.")
-		return nil
-	}
-	fmt.Println("Setup finished WITH WARNINGS: the Stop hook is not installed.")
-	fmt.Println("TTS is configured, but real-time speech via hooks is disabled")
-	fmt.Println("until you add the hook to ~/.claude/settings.json manually.")
-	return errors.New("Stop hook not installed")
-}
-
-// printProviderHelp prints the provider-specific credential hint on validation
-// failure, mirroring Node setup.js.
-func printProviderHelp(provider string) {
-	switch provider {
-	case "google":
-		fmt.Println("Setup instructions for Google Cloud TTS:")
-		fmt.Println("  1. Create a Google Cloud project")
-		fmt.Println("  2. Enable the Text-to-Speech API")
-		fmt.Println("  3. Create a service account key")
-		fmt.Println("  4. Set GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json")
-	case "elevenlabs":
-		fmt.Println("Setup instructions for ElevenLabs:")
-		fmt.Println("  1. Sign up at elevenlabs.io (paid plan required for API)")
-		fmt.Println("  2. Get your API key from settings")
-		fmt.Println("  3. Set ELEVENLABS_API_KEY=your-key")
-	case "macos":
-		fmt.Println("macOS say command should be available by default.")
-		fmt.Println(`Try: say "hello" in your terminal.`)
-	}
-}
-
-// runSessions prints discovered sessions, most-recent-first, each labelled with
-// its session name (ai-title / first prompt) over a project + id + age line.
-func runSessions() error {
-	sessions, err := session.DiscoverWithTitles()
-	if err != nil {
-		return err
-	}
-	if len(sessions) == 0 {
-		fmt.Println("No sessions found.")
-		return nil
-	}
-	fmt.Println("Recent Claude Code sessions:")
-	fmt.Println()
-	limit := len(sessions)
-	if limit > 20 {
-		limit = 20
-	}
-	for _, s := range sessions[:limit] {
-		fmt.Printf("  %s\n      %s  %s  (%s)\n", sessionName(s), shortID(s.ID), filepath.Base(s.ProjectName), formatAge(s.LastActive))
-	}
-	fmt.Printf("\nTotal: %d sessions\n", len(sessions))
-	return nil
 }
 
 // sessionName is the human label for a session: its Title (ai-title / first
@@ -497,15 +348,6 @@ func sessionName(s session.Info) string {
 		return s.Title
 	}
 	return filepath.Base(s.ProjectName)
-}
-
-// runProviders prints the registered TTS providers.
-func runProviders() error {
-	fmt.Println("Available TTS providers:")
-	for _, p := range providerNames() {
-		fmt.Printf("  - %s\n", p)
-	}
-	return nil
 }
 
 // runVoices prints available macOS voices (all when true, else English only),
@@ -555,269 +397,9 @@ func runVoices(all bool) error {
 	return nil
 }
 
-// installHook adds this binary's `hook` subcommand as a Claude Code Stop hook in
-// ~/.claude/settings.json, atomically, preserving unrelated settings and pruning
-// any stale pre-rename entry. Mirrors Node setup.js installHook.
-func installHook() bool {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "  Error installing hook: %v\n", err)
-		return false
-	}
-	settingsDir := filepath.Join(home, ".claude")
-	settingsFile := filepath.Join(settingsDir, "settings.json")
-
-	exe, err := os.Executable()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "  Error installing hook: %v\n", err)
-		return false
-	}
-	if resolved, rerr := filepath.EvalSymlinks(exe); rerr == nil {
-		exe = resolved
-	}
-	hookCommand := fmt.Sprintf("%q hook", exe)
-
-	// Preserve every top-level settings key by decoding into a generic map.
-	settings := map[string]any{}
-	if data, rerr := os.ReadFile(settingsFile); rerr == nil {
-		if jerr := json.Unmarshal(data, &settings); jerr != nil {
-			settings = map[string]any{}
-		}
-	}
-
-	hooks, _ := settings["hooks"].(map[string]any)
-	if hooks == nil {
-		hooks = map[string]any{}
-	}
-	existing, _ := hooks["Stop"].([]any)
-
-	var kept []any
-	removedStale := false
-	for _, g := range existing {
-		if groupContains(g, "claude-speak-hook") || groupContains(g, "claude-says-hook.js") {
-			removedStale = true
-			continue
-		}
-		kept = append(kept, g)
-	}
-
-	alreadyInstalled := false
-	for _, g := range kept {
-		if groupContains(g, exe) {
-			alreadyInstalled = true
-			break
-		}
-	}
-
-	if alreadyInstalled && !removedStale {
-		fmt.Println("  Hook already installed.")
-		return true
-	}
-	if alreadyInstalled {
-		fmt.Println("  Removed a stale pre-rename hook entry.")
-	} else {
-		kept = append(kept, map[string]any{
-			"matcher": "*",
-			"hooks": []any{
-				map[string]any{
-					"type":    "command",
-					"command": hookCommand,
-					"timeout": 5,
-				},
-			},
-		})
-	}
-
-	hooks["Stop"] = kept
-	settings["hooks"] = hooks
-
-	out, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "  Error installing hook: %v\n", err)
-		return false
-	}
-	if err := os.MkdirAll(settingsDir, 0o755); err != nil {
-		fmt.Fprintf(os.Stderr, "  Error installing hook: %v\n", err)
-		return false
-	}
-	tmp := settingsFile + ".tmp"
-	if err := os.WriteFile(tmp, out, 0o644); err != nil {
-		fmt.Fprintf(os.Stderr, "  Error installing hook: %v\n", err)
-		return false
-	}
-	if err := os.Rename(tmp, settingsFile); err != nil {
-		os.Remove(tmp)
-		fmt.Fprintf(os.Stderr, "  Error installing hook: %v\n", err)
-		return false
-	}
-	return true
-}
-
-// newUninstallCmd removes the Claude Code Stop hook and the ~/.claude-says config
-// dir, reversing `setup`. It does not delete the binary itself (a running program
-// can't reliably remove itself) — it prints the path to remove.
-func newUninstallCmd() *cobra.Command {
-	var keepConfig bool
-	cmd := &cobra.Command{
-		Use:           "uninstall",
-		Short:         "Remove the Claude Code hook and config (reverse of setup)",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUninstall(keepConfig)
-		},
-	}
-	cmd.Flags().BoolVar(&keepConfig, "keep-config", false, "Keep ~/.claude-says (config + socket)")
-	return cmd
-}
-
-func runUninstall(keepConfig bool) error {
-	fmt.Println("claude-says — Uninstall")
-	fmt.Println()
-
-	// 1. Remove the Stop hook from ~/.claude/settings.json.
-	switch removed, err := removeHook(); {
-	case err != nil:
-		fmt.Printf("  ! Could not update the Stop hook: %v\n", err)
-	case removed:
-		fmt.Println("  ✓ Removed the claude-says Stop hook from ~/.claude/settings.json")
-	default:
-		fmt.Println("  · No claude-says Stop hook found")
-	}
-
-	// 2. Remove ~/.claude-says (config.json + socket), unless kept.
-	switch {
-	case keepConfig:
-		fmt.Println("  · Kept ~/.claude-says (--keep-config)")
-	default:
-		if dir, err := config.ConfigDir(); err != nil {
-			fmt.Printf("  ! Could not resolve the config dir: %v\n", err)
-		} else if _, err := os.Stat(dir); os.IsNotExist(err) {
-			fmt.Println("  · No ~/.claude-says directory")
-		} else if err := os.RemoveAll(dir); err != nil {
-			fmt.Printf("  ! Could not remove %s: %v\n", dir, err)
-		} else {
-			fmt.Printf("  ✓ Removed %s (config + socket)\n", dir)
-		}
-	}
-
-	// 3. Point at the binary — a running program can't cleanly delete itself.
-	if exe, err := os.Executable(); err == nil {
-		if resolved, rerr := filepath.EvalSymlinks(exe); rerr == nil {
-			exe = resolved
-		}
-		fmt.Printf("\n  To remove the binary:  rm %s\n", exe)
-	}
-	fmt.Println("\nDone. If the daemon is still running, quit it (press q in the TUI, or kill the process).")
-	return nil
-}
-
-// removeHook deletes claude-says's Stop-hook group(s) from ~/.claude/settings.json,
-// preserving every other setting and hook, and writes the result atomically. It is
-// the inverse of installHook. Returns removed=true iff a matching group was found.
-// A missing settings file (or no matching hook) is a no-op returning (false, nil).
-func removeHook() (bool, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return false, err
-	}
-	settingsFile := filepath.Join(home, ".claude", "settings.json")
-
-	data, err := os.ReadFile(settingsFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	settings := map[string]any{}
-	if err := json.Unmarshal(data, &settings); err != nil {
-		return false, fmt.Errorf("settings.json is not valid JSON: %w", err)
-	}
-
-	hooks, _ := settings["hooks"].(map[string]any)
-	if hooks == nil {
-		return false, nil
-	}
-	existing, _ := hooks["Stop"].([]any)
-
-	exe, _ := os.Executable()
-	if resolved, rerr := filepath.EvalSymlinks(exe); rerr == nil {
-		exe = resolved
-	}
-
-	var kept []any
-	removed := false
-	for _, g := range existing {
-		// Match any claude-says hook regardless of install path — installHook
-		// writes a quoted path to the `claude-says` binary followed by ` hook` —
-		// plus the current exe and the stale Node hook names.
-		if groupContains(g, `claude-says" hook`) ||
-			groupContains(g, "claude-says-hook.js") ||
-			groupContains(g, "claude-speak-hook") ||
-			(exe != "" && groupContains(g, exe)) {
-			removed = true
-			continue
-		}
-		kept = append(kept, g)
-	}
-	if !removed {
-		return false, nil
-	}
-
-	// Tidy up: drop an empty Stop list and an empty hooks object.
-	if len(kept) == 0 {
-		delete(hooks, "Stop")
-	} else {
-		hooks["Stop"] = kept
-	}
-	if len(hooks) == 0 {
-		delete(settings, "hooks")
-	} else {
-		settings["hooks"] = hooks
-	}
-
-	out, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		return false, err
-	}
-	tmp := settingsFile + ".tmp"
-	if err := os.WriteFile(tmp, out, 0o644); err != nil {
-		return false, err
-	}
-	if err := os.Rename(tmp, settingsFile); err != nil {
-		os.Remove(tmp)
-		return false, err
-	}
-	return true, nil
-}
-
-// groupContains reports whether any command string in a Stop-hook group contains
-// substr.
-func groupContains(group any, substr string) bool {
-	gm, ok := group.(map[string]any)
-	if !ok {
-		return false
-	}
-	hooks, ok := gm["hooks"].([]any)
-	if !ok {
-		return false
-	}
-	for _, h := range hooks {
-		hm, ok := h.(map[string]any)
-		if !ok {
-			continue
-		}
-		if cmd, ok := hm["command"].(string); ok && strings.Contains(cmd, substr) {
-			return true
-		}
-	}
-	return false
-}
-
 // pickSessionInteractive prints a numbered session list and reads a choice from
-// stdin, mirroring the Node --list picker. all=true means "listen to all
-// sessions"; ok=false with all=false means the user cancelled.
+// stdin. all=true means "start idle with no session"; ok=false with all=false
+// means the user cancelled.
 func pickSessionInteractive() (picked session.Info, all bool, ok bool) {
 	sessions, err := session.DiscoverWithTitles()
 	if err != nil || len(sessions) == 0 {
@@ -835,7 +417,7 @@ func pickSessionInteractive() (picked session.Info, all bool, ok bool) {
 	for i, s := range display {
 		fmt.Printf("  %d. %s\n       %s  %s  (%s)\n", i+1, sessionName(s), shortID(s.ID), filepath.Base(s.ProjectName), formatAge(s.LastActive))
 	}
-	fmt.Println("  0. Listen to all sessions")
+	fmt.Println("  0. Start with no session (idle)")
 	fmt.Println()
 	fmt.Print("Enter number: ")
 
@@ -852,12 +434,6 @@ func pickSessionInteractive() (picked session.Info, all bool, ok bool) {
 		return display[n-1], false, true
 	}
 	return session.Info{}, false, false
-}
-
-// providerNames returns the registered TTS provider names in Node's display
-// order (google, elevenlabs, macos); tts.List already returns them ordered.
-func providerNames() []string {
-	return tts.List()
 }
 
 // shortID returns the first 8 chars of a session id, or "all" when empty.

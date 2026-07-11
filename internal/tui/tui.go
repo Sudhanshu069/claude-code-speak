@@ -61,7 +61,7 @@ const (
 // Control is a command from the UI to the daemon.
 type Control struct {
 	Kind      ControlKind
-	SessionID string // for ControlSwitch; "" means all-sessions/hook mode
+	SessionID string // for ControlSwitch; "" means no session (idle)
 }
 
 // maxLogLines bounds the spoken-log ring so a long-running session can't grow
@@ -101,7 +101,7 @@ func NewStyles() Styles {
 	}
 }
 
-// pickerItem is one row in the session picker; id "" means all-sessions/hook mode.
+// pickerItem is one row in the session picker; id "" means no session (idle).
 type pickerItem struct {
 	id    string
 	title string
@@ -155,14 +155,14 @@ func New(cfg config.Config, events <-chan Event, ctrl chan<- Control, sessions [
 	return m
 }
 
-// pickerItems builds the picker rows: an all-sessions row first, then every
+// pickerItems builds the picker rows: a "no session" row first, then every
 // discovered session most-recent-first.
 func pickerItems(sessions []session.Info) []list.Item {
 	items := make([]list.Item, 0, len(sessions)+1)
 	items = append(items, pickerItem{
 		id:    "",
-		title: "All sessions (hooks)",
-		desc:  "Listen to every session via the Stop hook",
+		title: "No session (idle)",
+		desc:  "Stop following — speak nothing until you pick a session",
 	})
 	for _, s := range sessions {
 		short := s.ID
@@ -311,7 +311,7 @@ func (m *Model) applyEvent(ev Event) {
 		m.active = ev.Session
 		label := ev.Session
 		if label == "" {
-			label = "all sessions"
+			label = "no session"
 		}
 		m.appendLine(m.styles.Session.Render("— switched to " + label))
 	case EventStatus:
@@ -408,10 +408,10 @@ func (m Model) View() string {
 }
 
 // activeSessionName is the header label for the followed session: its name (from
-// the loaded session titles), else its short id, else "all".
+// the loaded session titles), else its short id, else "none".
 func (m Model) activeSessionName() string {
 	if m.active == "" {
-		return "all"
+		return "none"
 	}
 	for _, s := range m.sessions {
 		if s.ID == m.active && s.Title != "" {

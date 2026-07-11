@@ -1,13 +1,12 @@
 // Package tts converts text to a playable audio buffer through a small Provider
-// interface plus a name->factory registry, mirroring Node src/tts.js. The
-// player derives the temp-file extension from the format string a provider
-// returns, so a new provider only needs to return a known Format* constant.
+// interface. macOS `say` is the only provider; the interface is kept so the
+// daemon can inject a fake in tests and a future provider can slot back in. The
+// player derives the temp-file extension from the format string Synthesize
+// returns.
 package tts
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
 	"github.com/Sudhanshu069/claude-says/internal/config"
 )
@@ -16,8 +15,7 @@ import (
 // extension from these.
 const (
 	FormatAIFF = "aiff" // macOS `say`
-	FormatWAV  = "wav"  // Google LINEAR16 (RIFF/WAV container)
-	FormatMP3  = "mp3"  // ElevenLabs
+	FormatWAV  = "wav"  // generic non-AIFF container (used by the daemon tests)
 )
 
 // Provider converts text to a playable audio buffer. Small by design.
@@ -42,63 +40,9 @@ type Voice struct {
 	Language string // BCP-47 tag when known, else ""
 }
 
-// ErrUnknownProvider is returned by New for an unregistered provider name.
-var ErrUnknownProvider = errors.New("unknown TTS provider")
-
-// ErrHTTPStatus is a sentinel for non-2xx network responses. The response body
-// is deliberately NOT included (it can leak account/voice details into logs).
-type ErrHTTPStatus struct {
-	Provider string
-	Code     int
-}
-
-// Error implements error.
-func (e *ErrHTTPStatus) Error() string {
-	return fmt.Sprintf("%s API error %d", e.Provider, e.Code)
-}
-
-type factory func(*config.Config) (Provider, error)
-
-var registry = map[string]factory{
-	"macos":      newMacOS,
-	"google":     newGoogle,
-	"elevenlabs": newElevenLabs,
-}
-
-// providerOrder is the CLI display order, preserving Node's insertion order
-// (google, elevenlabs, macos) instead of the random map / alphabetical order.
-// List filters this by registry so a stale name here can never appear.
-var providerOrder = []string{"google", "elevenlabs", "macos"}
-
-// New builds the provider named by cfg.Provider (default "macos").
+// New builds the TTS provider. Only macOS `say` is supported now, so cfg.Provider
+// is ignored — a config still selecting a removed cloud provider transparently
+// falls back to macOS rather than failing at start.
 func New(cfg *config.Config) (Provider, error) {
-	name := cfg.Provider
-	if name == "" {
-		name = "macos"
-	}
-	f, ok := registry[name]
-	if !ok {
-		return nil, fmt.Errorf("%w: %q (available: %v)", ErrUnknownProvider, name, List())
-	}
-	return f(cfg)
-}
-
-// List returns the registered provider names in Node's display order (see
-// providerOrder), with any provider not listed there appended defensively so a
-// new registration can never silently vanish from the CLI.
-func List() []string {
-	seen := make(map[string]bool, len(registry))
-	names := make([]string, 0, len(registry))
-	for _, name := range providerOrder {
-		if _, ok := registry[name]; ok {
-			names = append(names, name)
-			seen[name] = true
-		}
-	}
-	for name := range registry {
-		if !seen[name] {
-			names = append(names, name)
-		}
-	}
-	return names
+	return newMacOS(cfg)
 }

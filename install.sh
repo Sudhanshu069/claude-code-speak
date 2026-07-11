@@ -59,5 +59,5 @@ echo ""
 "${BINDIR}/claude-says" --version
 echo ""
 echo "Installed. Next:"
-echo "  claude-says setup    # pick a voice + install the Claude Code Stop hook"
-echo "  claude-says start    # start speaking"
+echo "  claude-says start    # start speaking (auto-detects your most recent session)"
+echo "  claude-says voices   # list the macOS voices you can pick with --voice"

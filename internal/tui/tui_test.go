@@ -61,13 +61,13 @@ func ready(t *testing.T, m Model) Model {
 }
 
 func TestNew_InitialState(t *testing.T) {
-	cfg := config.Config{Provider: "elevenlabs"}
+	cfg := config.Config{Provider: "macos"}
 	cfg.Narrator.Enabled = true
 	cfg.Narrator.Provider = "gemini"
 	m := New(cfg, make(chan Event), make(chan Control), nil)
 
-	if m.provider != "elevenlabs" {
-		t.Errorf("provider = %q, want elevenlabs", m.provider)
+	if m.provider != "macos" {
+		t.Errorf("provider = %q, want macos", m.provider)
 	}
 	if m.narrator != "gemini" {
 		t.Errorf("narrator = %q, want gemini (enabled)", m.narrator)
@@ -203,7 +203,7 @@ func TestApplyEvent_ZeroEpochAlwaysRenders(t *testing.T) {
 	}
 
 	// An epoch-0 status event still renders and does not lower the epoch.
-	m.applyEvent(Event{Kind: EventStatus, Epoch: 0, Text: "Listening via hooks"})
+	m.applyEvent(Event{Kind: EventStatus, Epoch: 0, Text: "No session selected"})
 	if m.epoch != 5 {
 		t.Errorf("zero-epoch event changed epoch to %d, want 5", m.epoch)
 	}
@@ -253,10 +253,10 @@ func TestApplyEvent_KindsLogging(t *testing.T) {
 			contains:   "switched to abc",
 		},
 		{
-			name:      "session switched to all",
+			name:      "session switched to none",
 			ev:        Event{Kind: EventSessionSwitched, Session: ""},
 			wantLines: 1,
-			contains:  "all sessions",
+			contains:  "no session",
 		},
 		{
 			name:      "status logs text",
@@ -381,7 +381,7 @@ func TestHandleKey_PickerEnterSelectsAndSwitches(t *testing.T) {
 	m, ctrl := newTestModel(t, sessions)
 	m = ready(t, m)
 
-	// Open the picker; the first item is the "All sessions (hooks)" row with id "".
+	// Open the picker; the first item is the "No session (idle)" row with id "".
 	m, _ = step(t, m, runes("s"))
 	if !m.picking {
 		t.Fatal("picker did not open")
@@ -396,7 +396,7 @@ func TestHandleKey_PickerEnterSelectsAndSwitches(t *testing.T) {
 		t.Fatalf("enter sent %+v ok=%v, want ControlSwitch", c, ok)
 	}
 	if c.SessionID != "" {
-		t.Errorf("SessionID = %q, want empty (all-sessions row)", c.SessionID)
+		t.Errorf("SessionID = %q, want empty (no-session row)", c.SessionID)
 	}
 }
 
@@ -616,8 +616,8 @@ func TestActiveSessionName(t *testing.T) {
 	if got := m.activeSessionName(); got != "abcdef12" {
 		t.Errorf("no title: got %q, want short id abcdef12", got)
 	}
-	m.active = "" // all-sessions
-	if got := m.activeSessionName(); got != "all" {
-		t.Errorf("empty active: got %q, want all", got)
+	m.active = "" // no session
+	if got := m.activeSessionName(); got != "none" {
+		t.Errorf("empty active: got %q, want none", got)
 	}
 }

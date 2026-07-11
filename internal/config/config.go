@@ -11,15 +11,12 @@ import (
 	"path/filepath"
 )
 
-// Config reproduces Node DEFAULT_CONFIG field-for-field (camelCase JSON tags),
-// plus a TextProcessor.FlushDelay that the Node code only had as a constructor
-// default (1500ms).
+// Config holds claude-says configuration (camelCase JSON tags). Only the macOS
+// provider survives, so cloud-TTS blocks are gone; a config.json left over from
+// an older build still loads (unknown JSON keys are ignored on Load).
 type Config struct {
 	Provider      string              `json:"provider"`
 	Macos         MacosConfig         `json:"macos"`
-	Google        GoogleConfig        `json:"google"`
-	ElevenLabs    ElevenLabsConfig    `json:"elevenlabs"`
-	Playback      PlaybackConfig      `json:"playback"`
 	TextProcessor TextProcessorConfig `json:"textProcessor"`
 	Narrator      NarratorConfig      `json:"narrator"`
 }
@@ -28,25 +25,6 @@ type Config struct {
 type MacosConfig struct {
 	Voice string `json:"voice"`
 	Rate  int    `json:"rate"`
-}
-
-// GoogleConfig configures the Google Cloud TTS REST provider.
-type GoogleConfig struct {
-	Voice           string `json:"voice"`
-	LanguageCode    string `json:"languageCode"`
-	AudioEncoding   string `json:"audioEncoding"`
-	SampleRateHertz int    `json:"sampleRateHertz"`
-}
-
-// ElevenLabsConfig configures the ElevenLabs provider.
-type ElevenLabsConfig struct {
-	VoiceID string `json:"voiceId"`
-	ModelID string `json:"modelId"`
-}
-
-// PlaybackConfig configures audio playback (currently only "afplay").
-type PlaybackConfig struct {
-	Method string `json:"method"`
 }
 
 // TextProcessorConfig configures sentence buffering/splitting.
@@ -68,26 +46,13 @@ type GeminiConfig struct {
 	Model string `json:"model"`
 }
 
-// DefaultConfig mirrors Node DEFAULT_CONFIG (config.js) plus FlushDelay=1500.
+// DefaultConfig is the baseline config Load() overlays the saved file onto.
 func DefaultConfig() Config {
 	return Config{
 		Provider: "macos",
 		Macos: MacosConfig{
 			Voice: "Samantha",
 			Rate:  200,
-		},
-		Google: GoogleConfig{
-			Voice:           "en-US-Neural2-D",
-			LanguageCode:    "en-US",
-			AudioEncoding:   "LINEAR16",
-			SampleRateHertz: 24000,
-		},
-		ElevenLabs: ElevenLabsConfig{
-			VoiceID: "21m00Tcm4TlvDq8ikWAM",
-			ModelID: "eleven_turbo_v2_5",
-		},
-		Playback: PlaybackConfig{
-			Method: "afplay",
 		},
 		TextProcessor: TextProcessorConfig{
 			MinChunkLength: 10,
@@ -186,13 +151,4 @@ func ConfigFile() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, "config.json"), nil
-}
-
-// SocketPath returns ~/.claude-says/claude-says.sock.
-func SocketPath() (string, error) {
-	dir, err := ConfigDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "claude-says.sock"), nil
 }

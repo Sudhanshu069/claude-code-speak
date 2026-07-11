@@ -8,9 +8,9 @@ import (
 	"testing"
 )
 
-// isolate points HOME at a fresh temp dir so ConfigDir()/ConfigFile()/
-// SocketPath() resolve inside it. darwin's os.UserHomeDir() honours $HOME.
-// t.Setenv forbids t.Parallel() in these tests.
+// isolate points HOME at a fresh temp dir so ConfigDir()/ConfigFile() resolve
+// inside it. darwin's os.UserHomeDir() honours $HOME. t.Setenv forbids
+// t.Parallel() in these tests.
 func isolate(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
@@ -23,17 +23,6 @@ func TestDefaultConfig(t *testing.T) {
 	want := Config{
 		Provider: "macos",
 		Macos:    MacosConfig{Voice: "Samantha", Rate: 200},
-		Google: GoogleConfig{
-			Voice:           "en-US-Neural2-D",
-			LanguageCode:    "en-US",
-			AudioEncoding:   "LINEAR16",
-			SampleRateHertz: 24000,
-		},
-		ElevenLabs: ElevenLabsConfig{
-			VoiceID: "21m00Tcm4TlvDq8ikWAM",
-			ModelID: "eleven_turbo_v2_5",
-		},
-		Playback: PlaybackConfig{Method: "afplay"},
 		TextProcessor: TextProcessorConfig{
 			MinChunkLength: 10,
 			MaxChunkLength: 500,
@@ -67,14 +56,6 @@ func TestPathsResolveUnderHome(t *testing.T) {
 	}
 	if want := filepath.Join(home, ".claude-says", "config.json"); file != want {
 		t.Errorf("ConfigFile = %q, want %q", file, want)
-	}
-
-	sock, err := SocketPath()
-	if err != nil {
-		t.Fatalf("SocketPath: %v", err)
-	}
-	if want := filepath.Join(home, ".claude-says", "claude-says.sock"); sock != want {
-		t.Errorf("SocketPath = %q, want %q", sock, want)
 	}
 }
 
@@ -112,16 +93,17 @@ func seed(t *testing.T, raw string) {
 func TestLoadOverlaysPartialJSON(t *testing.T) {
 	isolate(t)
 	// Only provider and macos.rate are present; every absent field — including
-	// the sibling macos.voice — must stay at its default (deep-merge parity).
-	seed(t, `{"provider":"google","macos":{"rate":150}}`)
+	// the sibling macos.voice and the whole textProcessor block — must stay at
+	// its default (deep-merge parity).
+	seed(t, `{"provider":"custom","macos":{"rate":150}}`)
 
 	got, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if got.Provider != "google" {
-		t.Errorf("Provider = %q, want %q", got.Provider, "google")
+	if got.Provider != "custom" {
+		t.Errorf("Provider = %q, want %q", got.Provider, "custom")
 	}
 	if got.Macos.Rate != 150 {
 		t.Errorf("Macos.Rate = %d, want 150", got.Macos.Rate)
@@ -130,9 +112,6 @@ func TestLoadOverlaysPartialJSON(t *testing.T) {
 		t.Errorf("Macos.Voice = %q, want default %q", got.Macos.Voice, "Samantha")
 	}
 	// A wholly-absent nested block stays fully default.
-	if got.Google != (DefaultConfig().Google) {
-		t.Errorf("Google = %+v, want default %+v", got.Google, DefaultConfig().Google)
-	}
 	if got.TextProcessor != DefaultConfig().TextProcessor {
 		t.Errorf("TextProcessor = %+v, want default", got.TextProcessor)
 	}
@@ -155,8 +134,8 @@ func TestSaveRoundTripsAndPerms(t *testing.T) {
 	isolate(t)
 
 	cfg := DefaultConfig()
-	cfg.Provider = "elevenlabs"
-	cfg.ElevenLabs.VoiceID = "custom-voice"
+	cfg.Macos.Voice = "Daniel"
+	cfg.Macos.Rate = 175
 	cfg.Narrator.Enabled = true
 
 	if err := cfg.Save(); err != nil {

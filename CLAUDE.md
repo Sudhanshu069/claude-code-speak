@@ -17,19 +17,20 @@ go build ./... && go vet ./... && go test ./...   # must stay green
 Package layout:
 
 ```
-cmd/claude-says/     Cobra CLI (start[default]/setup/sessions/providers/voices) + hidden `hook` subcommand
+cmd/claude-says/     Cobra CLI: start [default] + voices + uninstall
 internal/config      ~/.claude-says/config.json (camelCase JSON, 0600, atomic writes, DefaultConfig)
 internal/logx        log/slog logger — pretty on a TTY, JSON when piped; level via env
 internal/session     session discovery under ~/.claude/projects (MostRecent, FindTranscript)
 internal/transcript  transcript watcher: fsnotify + 200ms safety poll, offset read, UUID dedup, EOF start
 internal/textproc    fence strip, noise filter, sentence split, markdown clean, monotonic seq (block-seam separator)
 internal/audio       epoch-fenced ordered queue (queue.go) + afplay player (player.go)
-internal/ipc         Unix-domain-socket NDJSON server + client (0600 socket, lstat guard)
-internal/tts         Provider interface + registry; macos / google / elevenlabs
+internal/tts         Provider interface + macOS `say` (New always returns macOS; a stale cloud-provider config falls back to it)
 internal/narrator    Narrator interface (total Narrate) + gemini
-internal/daemon      orchestrator: context-cancellable pipeline, session switch, graceful drain
+internal/daemon      orchestrator: context-cancellable pipeline, session switch, graceful drain; the text source is the transcript watcher (tests inject via the daemon's buffered `inject` channel)
 internal/tui         Bubble Tea model/update/view; consumes daemon events via channel
 ```
+
+**Trimmed to macOS-only (phase 1).** Cloud TTS (google, elevenlabs), the Claude Code Stop hook, the IPC Unix socket, and the `setup`/`sessions`/`providers` subcommands were removed (`uninstall` is kept); `go.mod` no longer pulls `golang.org/x/oauth2`. The daemon follows the session transcript exclusively — there is no hook/IPC fallback. Keep it this way unless a task explicitly re-adds a provider or text source.
 
 **Load-bearing invariant — the epoch fence.** The audio queue keys every item by `{epoch, seq}`. A session switch/reset bumps the epoch; a single drain goroutine plays strictly in `seq` order for the current epoch and drops results from a stale epoch on arrival. This is what makes cross-session audio bleed, the CPU-hang, and stranded-sentence bugs from the Node version structurally impossible. **Do not** reintroduce a shared `draining` bool or a busy-loop; preserve the single-owner drain goroutine + channels + `context.Context` cancellation.
 

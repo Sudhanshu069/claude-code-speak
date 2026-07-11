@@ -23,7 +23,7 @@ A single, dependency-free binary with a live TUI: watch (and hear) what Claude i
 curl -fsSL https://raw.githubusercontent.com/Sudhanshu069/claude-says/main/install.sh | sh
 ```
 
-Detects your chip, downloads the latest macOS release, **verifies its SHA-256 checksum**, and installs `claude-says` to `/usr/local/bin` (override with `BINDIR=…`). Then run `claude-says setup`.
+Detects your chip, downloads the latest macOS release, **verifies its SHA-256 checksum**, and installs `claude-says` to `/usr/local/bin` (override with `BINDIR=…`). Then run `claude-says start`.
 
 <details>
 <summary>…or download a release manually</summary>
@@ -66,22 +66,19 @@ curl -fsSL https://raw.githubusercontent.com/Sudhanshu069/claude-says/main/unins
 Or, if you already have the binary:
 
 ```bash
-claude-says uninstall     # removes the Claude Code Stop hook + ~/.claude-says
+claude-says uninstall            # removes ~/.claude-says (pass --keep-config to keep it)
 rm "$(command -v claude-says)"   # then remove the binary
 ```
 
-`claude-says uninstall` reverses `setup`: it strips the claude-says Stop hook from `~/.claude/settings.json` (leaving your other settings and hooks untouched) and deletes `~/.claude-says` (config + socket). Pass `--keep-config` to keep your settings.
+claude-says stores only `~/.claude-says/config.json` — it installs nothing into Claude Code, so `uninstall` just clears that config (and prints the binary path to delete).
 
 ## Quick Start
 
 ```bash
-# 1. Setup (installs the Claude Code hook, tests audio)
-claude-says setup
-
-# 2. Start in one terminal — opens the TUI
+# 1. Start in one terminal — opens the TUI (auto-detects your most recent session)
 claude-says start
 
-# 3. Use Claude Code in another terminal as normal
+# 2. Use Claude Code in another terminal as normal
 claude
 ```
 
@@ -95,25 +92,13 @@ That's it. When Claude responds, you'll hear it spoken aloud and see it scroll i
 
 ## Requirements
 
-- **macOS** (uses `afplay` for playback, `say` for the default voice)
+- **macOS** (uses `afplay` for playback, `say` for the voice)
 - **Go 1.26+** to build (the resulting binary has no runtime deps)
-- **Claude Code CLI** installed (`claude-says setup` registers a `Stop` hook with it)
+- **Claude Code CLI** installed (claude-says follows its session transcripts)
 
-## TTS Providers
+## Voice
 
-| Provider | Setup | Latency | Cost |
-|----------|-------|---------|------|
-| `macos` (default) | None | Lowest (local) | Free |
-| `google` | Service-account creds | ~1–2s / sentence | Pay per use |
-| `elevenlabs` | API key (paid plan) | ~0.5–1s | Pay per use |
-
-```bash
-claude-says start --provider google
-```
-
-### macOS (default)
-
-Works out of the box using the built-in `say` command. No API keys needed.
+Speech uses the built-in macOS `say` command — no API keys, no cloud, no setup.
 
 ```bash
 claude-says voices                    # List English voices
@@ -121,20 +106,6 @@ claude-says voices --all              # List all voices
 claude-says start --voice "Daniel"    # Use a specific voice
 claude-says start --rate 150          # Slower (words per minute, default 200)
 claude-says start --voice "Karen" --rate 150
-```
-
-### Google Cloud TTS
-
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
-claude-says setup --provider google
-```
-
-### ElevenLabs
-
-```bash
-export ELEVENLABS_API_KEY=your-key
-claude-says setup --provider elevenlabs
 ```
 
 ## Narrator mode (optional)
@@ -152,13 +123,9 @@ claude-says start --narrator
 claude-says start              # Start the daemon + TUI (auto-detects most recent session)
 claude-says start -l           # Pick a session interactively
 claude-says start -s <id>      # Listen to a specific session
-claude-says start -p <name>    # Use a specific TTS provider
 claude-says start --narrator   # Enable LLM narrator mode
 claude-says start --voice "Daniel"
 claude-says start --rate 150
-claude-says setup              # Configure provider and install the Stop hook
-claude-says sessions           # List Claude Code sessions
-claude-says providers          # List available TTS providers
 claude-says voices             # List available macOS voices
 claude-says --version
 ```
@@ -173,7 +140,7 @@ claude-says --version
 
 ## Shell completion
 
-Tab-complete `--voice` (cycles the English macOS voices) and `--provider`:
+Tab-complete `--voice` (cycles the English macOS voices):
 
 ```bash
 # zsh — write the completion into your fpath, then restart the shell:
@@ -198,17 +165,6 @@ Settings live in `~/.claude-says/config.json` (owner-only, `0600`) and are merge
 {
   "provider": "macos",
   "macos": { "voice": "Samantha", "rate": 200 },
-  "google": {
-    "voice": "en-US-Neural2-D",
-    "languageCode": "en-US",
-    "audioEncoding": "LINEAR16",
-    "sampleRateHertz": 24000
-  },
-  "elevenlabs": {
-    "voiceId": "21m00Tcm4TlvDq8ikWAM",
-    "modelId": "eleven_turbo_v2_5"
-  },
-  "playback": { "method": "afplay" },
   "textProcessor": { "minChunkLength": 10, "maxChunkLength": 500, "flushDelay": 1500 },
   "narrator": {
     "enabled": false,
@@ -220,25 +176,23 @@ Settings live in `~/.claude-says/config.json` (owner-only, `0600`) and are merge
 
 ## How It Works
 
-1. A `Stop` hook in Claude Code fires after each response.
-2. `claude-says` gets the new assistant text one of two ways: the daemon **watches the session transcript** directly (fsnotify + a safety poll) for the lowest latency, or the hook forwards it over a **Unix-domain socket** as a fallback.
-3. The text processor splits it into sentences, strips markdown/code/URL noise, and (optionally) rephrases it through the narrator.
-4. Each sentence is synthesized by the TTS provider and played in strict order by an **epoch-fenced audio queue**, so out-of-order synth results never play out of sequence — and switching sessions can never bleed the old session's audio into the new one.
+1. The daemon **watches the active Claude Code session transcript** directly (fsnotify + a safety poll) and picks up each new assistant text block.
+2. The text processor splits it into sentences and strips markdown/code/URL noise, and (optionally) rephrases it through the narrator.
+3. Each sentence is synthesized by macOS `say` and played in strict order by an **epoch-fenced audio queue**, so out-of-order synth results never play out of sequence — and switching sessions can never bleed the old session's audio into the new one.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
 
 ## Project layout
 
 ```
-cmd/claude-says/     CLI (Cobra) + the Stop-hook entry point
+cmd/claude-says/     CLI (Cobra): start [default] + voices
 internal/config      ~/.claude-says/config.json (0600, atomic writes)
 internal/logx        structured logging (slog: pretty on a TTY, JSON when piped)
 internal/session     Claude Code session discovery under ~/.claude/projects
 internal/transcript  transcript watcher (fsnotify + safety poll, UUID dedup)
 internal/textproc    sentence chunking + markdown/URL/code cleaning
 internal/audio       epoch-fenced ordered queue + afplay player
-internal/ipc         Unix-domain-socket IPC (hook → daemon)
-internal/tts         provider interface + macos / google / elevenlabs
+internal/tts         provider interface + macOS `say`
 internal/narrator    LLM narrator interface + gemini
 internal/daemon      orchestrator (context-cancellable pipeline)
 internal/tui         Bubble Tea TUI
@@ -246,11 +200,11 @@ internal/tui         Bubble Tea TUI
 
 ## What changed from the Node version
 
-The Go rewrite keeps the feature set but rebuilds the internals to fix bugs the Node daemon shipped with:
+The Go rewrite rebuilds the internals to fix bugs the Node daemon shipped with:
 
 - **No cross-session audio bleed / no CPU-hang / no stranded sentences.** The audio queue is *epoch-fenced*: every session reset bumps a generation counter, and a single drain goroutine plays strictly in order. Stale in-flight results are dropped instead of overwriting the new session's slot — the root cause of the Node audio-queue bug cluster.
-- **Bounded network calls.** Every Google/ElevenLabs/Gemini request has a context deadline; a hung provider can no longer stall the pipeline.
-- **Failures are visible and survivable.** A provider error degrades a single sentence and is logged; it never kills the daemon.
+- **Bounded calls.** Every synth and narrator request has a context deadline; a hung call can no longer stall the pipeline.
+- **Failures are visible and survivable.** A synth error degrades a single sentence and is logged; it never kills the daemon.
 - **A real TUI** — live spoken-text log with queue/epoch/playing counters — instead of the raw-mode keypress handler.
 - **One binary.** No `node_modules`, no npm, no optional-dependency install dance.
 
@@ -258,7 +212,7 @@ The Go rewrite keeps the feature set but rebuilds the internals to fix bugs the 
 
 ### Add a TTS provider
 
-Implement the `Provider` interface in `internal/tts` (`Synthesize(ctx, text) ([]byte, format, error)` and `Validate(ctx) error`) and register it in `internal/tts/tts.go`.
+Implement the `Provider` interface in `internal/tts` (`Synthesize(ctx, text) ([]byte, format, error)` and `Validate(ctx) error`) and return it from `New` in `internal/tts/tts.go`.
 
 ### Add a narrator
 

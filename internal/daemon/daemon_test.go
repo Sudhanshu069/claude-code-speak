@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Sudhanshu069/claude-says/internal/config"
-	"github.com/Sudhanshu069/claude-says/internal/ipc"
 	"github.com/Sudhanshu069/claude-says/internal/narrator"
 	"github.com/Sudhanshu069/claude-says/internal/tts"
 	"github.com/Sudhanshu069/claude-says/internal/tui"
@@ -176,15 +175,9 @@ func captureLogs(t *testing.T) *lockedBuf {
 	return lb
 }
 
-// isolateHome points HOME/TMPDIR at fresh temp dirs so: (a) session.MostRecent
-// finds nothing (~/.claude/projects absent) => no watcher => IPC fallback is
-// live, and (b) the IPC socket binds under a private ~/.claude-says. Nothing
-// touches the real user dirs.
-//
-// HOME uses os.MkdirTemp with a short prefix (not t.TempDir) because the derived
-// unix socket path ~/.claude-says/claude-says.sock must fit macOS's ~104-byte
-// sun_path limit; t.TempDir bakes the (long) test name into the path and blows
-// past it.
+// isolateHome points HOME/TMPDIR at fresh temp dirs so session.MostRecent finds
+// nothing (~/.claude/projects absent) => the daemon starts no watcher and stays
+// idle until a test injects text. Nothing touches the real user dirs.
 func isolateHome(t *testing.T) {
 	t.Helper()
 	home, err := os.MkdirTemp("", "cs")
@@ -196,23 +189,18 @@ func isolateHome(t *testing.T) {
 	t.Setenv("TMPDIR", home)
 }
 
-// feedIPC delivers one text message to the daemon's IPC socket, retrying until
-// the socket is bound (bounded) so there is no start-up race.
-func feedIPC(t *testing.T, text string) {
+// feedText injects one text chunk into the daemon's pipeline via the inject seam
+// (the successor to the removed IPC path): Run feeds it exactly like a watcher
+// event. The inject channel is buffered, so a send before Run reaches its select
+// simply queues — no start-up race.
+func feedText(t *testing.T, d *Daemon, text string) {
 	t.Helper()
-	sock, err := config.SocketPath()
-	if err != nil {
-		t.Fatalf("socket path: %v", err)
-	}
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		if ipc.Send(sock, ipc.Message{Type: "text", Text: text}, 200*time.Millisecond) {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("could not deliver IPC text %q (socket never came up)", text)
-		}
-		time.Sleep(5 * time.Millisecond)
+	select {
+	case d.inject <- text:
+	case <-d.runDone:
+		t.Fatalf("Run already returned; cannot inject %q", text)
+	case <-time.After(3 * time.Second):
+		t.Fatalf("inject of %q timed out (pipeline not draining)", text)
 	}
 }
 
@@ -306,7 +294,7 @@ func TestPipeline_EndToEnd(t *testing.T) {
 	_, cancel, runErr := startRun(t, d)
 	defer func() { cancel(); awaitRun(t, runErr, 3*time.Second) }()
 
-	feedIPC(t, "Hello there listeners. ")
+	feedText(t, d, "Hello there listeners. ")
 
 	got := waitPlayed(t, player.playedCh, 3*time.Second)
 	const want = "Hello there listeners."
@@ -332,7 +320,7 @@ func TestPipeline_NarratorRewritesText(t *testing.T) {
 		_, cancel, runErr := startRun(t, d)
 		defer func() { cancel(); awaitRun(t, runErr, 3*time.Second) }()
 
-		feedIPC(t, "make this loud please. ")
+		feedText(t, d, "make this loud please. ")
 
 		got := waitPlayed(t, player.playedCh, 3*time.Second)
 		const want = "MAKE THIS LOUD PLEASE."
@@ -354,7 +342,7 @@ func TestPipeline_NarratorRewritesText(t *testing.T) {
 		_, cancel, runErr := startRun(t, d)
 		defer func() { cancel(); awaitRun(t, runErr, 3*time.Second) }()
 
-		feedIPC(t, "speak this anyway. ")
+		feedText(t, d, "speak this anyway. ")
 
 		got := waitPlayed(t, player.playedCh, 3*time.Second)
 		const want = "SPEAK THIS ANYWAY."
@@ -386,7 +374,7 @@ func TestPipeline_SwitchSessionDropsStaleResult(t *testing.T) {
 	defer func() { cancel(); awaitRun(t, runErr, 3*time.Second) }()
 
 	// Sentence 1 enters synth at epoch 0 and parks there.
-	feedIPC(t, "First sentence alpha. ")
+	feedText(t, d, "First sentence alpha. ")
 	select {
 	case <-prov.enter:
 	case <-time.After(3 * time.Second):
@@ -403,7 +391,7 @@ func TestPipeline_SwitchSessionDropsStaleResult(t *testing.T) {
 	close(prov.release)
 
 	// Sentence 2 belongs to the new epoch and must be the one that plays.
-	feedIPC(t, "Second sentence beta. ")
+	feedText(t, d, "Second sentence beta. ")
 	got := waitPlayed(t, player.playedCh, 3*time.Second)
 	const want = "Second sentence beta."
 	if got != want {
@@ -438,8 +426,8 @@ func TestPipeline_ProviderPanicIsRecovered(t *testing.T) {
 	_, cancel, runErr := startRun(t, d)
 	defer func() { cancel(); awaitRun(t, runErr, 3*time.Second) }()
 
-	feedIPC(t, "This one panics. ")
-	feedIPC(t, "This one survives. ")
+	feedText(t, d, "This one panics. ")
+	feedText(t, d, "This one survives. ")
 
 	// The panicking sentence surfaces as a (recovered) error event.
 	waitForEvent(t, d.Events(), func(e tui.Event) bool {
@@ -459,20 +447,6 @@ func TestPipeline_ProviderPanicIsRecovered(t *testing.T) {
 	}
 }
 
-// clip bounds untrusted IPC text to maxIPCText bytes (a rogue local client can't
-// push an unbounded payload into the pipeline / paid cloud TTS).
-func TestClipBoundsIPCText(t *testing.T) {
-	if got := clip("short text"); got != "short text" {
-		t.Fatalf("clip(short) = %q, want it unchanged", got)
-	}
-	if got := clip(strings.Repeat("a", maxIPCText)); len(got) != maxIPCText {
-		t.Fatalf("clip(exact) len = %d, want %d (unchanged at the boundary)", len(got), maxIPCText)
-	}
-	if got := clip(strings.Repeat("b", maxIPCText+500)); len(got) != maxIPCText {
-		t.Fatalf("clip(oversized) len = %d, want capped at %d", len(got), maxIPCText)
-	}
-}
-
 // Req 4: a provider Synthesize error is logged and skipped; the daemon keeps
 // going and later sentences still play.
 func TestPipeline_SynthErrorIsSkipped(t *testing.T) {
@@ -488,8 +462,8 @@ func TestPipeline_SynthErrorIsSkipped(t *testing.T) {
 	_, cancel, runErr := startRun(t, d)
 	defer func() { cancel(); awaitRun(t, runErr, 3*time.Second) }()
 
-	feedIPC(t, "This fails now. ")
-	feedIPC(t, "This works fine. ")
+	feedText(t, d, "This fails now. ")
+	feedText(t, d, "This works fine. ")
 
 	// The failing sentence surfaces as an error event, and the daemon survives.
 	waitForEvent(t, d.Events(), func(e tui.Event) bool {
@@ -636,7 +610,7 @@ func TestPipeline_StopDrainsInFlight(t *testing.T) {
 	_, cancel, runErr := startRun(t, d)
 	defer cancel()
 
-	feedIPC(t, "Draining in progress now. ")
+	feedText(t, d, "Draining in progress now. ")
 
 	// Wait until the sentence is genuinely mid-playback (in flight).
 	select {

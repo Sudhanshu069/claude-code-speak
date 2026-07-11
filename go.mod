@@ -10,11 +10,9 @@ require (
 	github.com/lmittmann/tint v1.1.3
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
-	golang.org/x/oauth2 v0.36.0
 )
 
 require (
-	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/colorprofile v0.4.1 // indirect
