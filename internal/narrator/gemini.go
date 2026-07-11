@@ -29,9 +29,9 @@ const geminiMaxRespBytes = 1 << 20
 // config value from injecting extra path segments or query parameters.
 var modelRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
-// geminiSystemPrompt is the narrator instruction, verbatim from Node
-// src/narrators/gemini.js.
-const geminiSystemPrompt = `You are a concise narrator commentating on an AI coding assistant's actions in real-time.
+// narratorSystemPrompt is the narrator instruction, verbatim from Node
+// src/narrators/gemini.js. Shared by every narrator provider (gemini, ollama).
+const narratorSystemPrompt = `You are a concise narrator commentating on an AI coding assistant's actions in real-time.
 
 Rules:
 - Summarize what the assistant is doing in 1-2 short, conversational sentences
@@ -126,10 +126,13 @@ func (n *GeminiNarrator) generate(ctx context.Context, text string) (string, err
 	ctx, cancel := context.WithTimeout(ctx, geminiTimeout)
 	defer cancel()
 
+	// Scrub obvious secrets before they leave the machine (defense-in-depth for
+	// the third-party egress; local narrators skip this).
+	safe := RedactSecrets(text)
 	payload := geminiReq{
-		SystemInstruction: geminiContent{Parts: []geminiPart{{Text: geminiSystemPrompt}}},
+		SystemInstruction: geminiContent{Parts: []geminiPart{{Text: narratorSystemPrompt}}},
 		Contents: []geminiContent{
-			{Parts: []geminiPart{{Text: "Narrate this AI assistant output:\n\n" + text}}},
+			{Parts: []geminiPart{{Text: "Narrate this AI assistant output:\n\n" + safe}}},
 		},
 		GenerationConfig: geminiGenCfg{MaxOutputTokens: 100, Temperature: 0.3},
 	}

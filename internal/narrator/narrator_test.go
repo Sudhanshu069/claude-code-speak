@@ -262,11 +262,30 @@ func TestRegistry(t *testing.T) {
 		}
 	})
 
+	t.Run("explicit ollama", func(t *testing.T) {
+		t.Parallel()
+		cfg := config.DefaultConfig()
+		cfg.Narrator.Provider = "ollama"
+		nr, err := New(&cfg)
+		if err != nil {
+			t.Fatalf("New(ollama) err = %v", err)
+		}
+		if _, ok := nr.(*OllamaNarrator); !ok {
+			t.Errorf("New returned %T, want *OllamaNarrator", nr)
+		}
+	})
+
 	t.Run("List", func(t *testing.T) {
 		t.Parallel()
 		got := List()
-		if len(got) != 1 || got[0] != "gemini" {
-			t.Errorf("List() = %v, want [gemini]", got)
+		want := map[string]bool{"gemini": true, "ollama": true}
+		if len(got) != len(want) {
+			t.Fatalf("List() = %v, want the two registered providers", got)
+		}
+		for _, name := range got {
+			if !want[name] {
+				t.Errorf("List() returned unexpected provider %q", name)
+			}
 		}
 	})
 }

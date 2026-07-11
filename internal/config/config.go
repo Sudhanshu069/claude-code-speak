@@ -34,22 +34,32 @@ type MacosConfig struct {
 type TextProcessorConfig struct {
 	MinChunkLength int      `json:"minChunkLength"`
 	MaxChunkLength int      `json:"maxChunkLength"`
-	FlushDelay     int      `json:"flushDelay"`     // ms; Node text-processor.js default 1500
-	Skip           []string `json:"skip"`           // drop spoken sentences containing any of these (case-insensitive)
-	Dedupe         bool     `json:"dedupe"`         // collapse consecutive identical sentences
-	FilterFiller   bool     `json:"filterFiller"`   // drop pure filler (acks + short "Let me…" announcements)
+	FlushDelay     int      `json:"flushDelay"`   // ms; Node text-processor.js default 1500
+	Skip           []string `json:"skip"`         // drop spoken sentences containing any of these (case-insensitive)
+	Dedupe         bool     `json:"dedupe"`       // collapse consecutive identical sentences
+	FilterFiller   bool     `json:"filterFiller"` // drop pure filler (acks + short "Let me…" announcements)
 }
 
-// NarratorConfig configures the optional LLM narrator.
+// NarratorConfig configures the optional LLM narrator. "gemini" is a cloud
+// provider (sends text to Google); "ollama" is fully local (nothing leaves the
+// machine).
 type NarratorConfig struct {
 	Enabled  bool         `json:"enabled"`
 	Provider string       `json:"provider"`
 	Gemini   GeminiConfig `json:"gemini"`
+	Ollama   OllamaConfig `json:"ollama"`
 }
 
 // GeminiConfig configures the Gemini narrator.
 type GeminiConfig struct {
 	Model string `json:"model"`
+}
+
+// OllamaConfig configures the local ollama narrator. Empty fields fall back to
+// defaults in the provider (model "llama3.2", endpoint http://localhost:11434).
+type OllamaConfig struct {
+	Model    string `json:"model"`
+	Endpoint string `json:"endpoint"`
 }
 
 // DefaultConfig is the baseline config Load() overlays the saved file onto.

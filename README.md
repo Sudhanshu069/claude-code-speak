@@ -110,14 +110,20 @@ claude-says start --voice "Karen" --rate 150
 
 ## Narrator mode (optional)
 
-Instead of reading Claude's output verbatim, narrator mode runs the text through an LLM that rephrases it into a short, spoken-friendly summary before it's voiced — less "reading markdown out loud," more "a colleague telling you what just happened." Powered by Google Gemini.
+Instead of reading Claude's output verbatim, narrator mode runs the text through an LLM that rephrases it into a short, spoken-friendly summary before it's voiced — less "reading markdown out loud," more "a colleague telling you what just happened." Two backends:
 
 ```bash
+# Cloud (Google Gemini) — highest quality, sends text off-machine:
 export GEMINI_API_KEY=your-key
 claude-says start --narrator
+
+# Local (ollama) — nothing leaves your machine:
+claude-says start --narrator --narrator-provider ollama   # needs `ollama serve` + a model
 ```
 
-> **Privacy — data leaves your machine.** Narrator mode is **off by default**. When you enable it, each new block of Claude's output is sent to Google's Gemini API (`generativelanguage.googleapis.com`) to be rephrased. The prompt asks Gemini to skip code and file paths, but the **raw text is transmitted in full** before any filtering — so it can include source code, file contents, secrets, or other sensitive material from your session. The API key is read only from `GEMINI_API_KEY` and is never written to disk. Leave `--narrator` off if you don't want session text sent to a third party. Everything else (the default macOS `say` path) runs entirely locally.
+> **Privacy — the cloud narrator sends text off-machine.** Narrator mode is **off by default**. With the default **gemini** backend, each new block of Claude's output is sent to Google's Gemini API to be rephrased. As a safety backstop, `claude-says` **redacts obvious secrets** (API keys, tokens, JWTs, private-key blocks, `password=…`/`token=…` assignments) to `[REDACTED]` before the request leaves — but redaction is best-effort, so treat enabling gemini as "session text goes to Google." The API key is read only from `GEMINI_API_KEY` and is never written to disk.
+>
+> For a narrator that **never** leaves the machine, use `--narrator-provider ollama` (talks to a local `ollama` server at `http://localhost:11434`; set `narrator.ollama.model`/`endpoint` in config to customize). The default macOS `say` path — narrator off — is fully local too.
 
 ## Commands
 
@@ -196,7 +202,8 @@ Settings live in `~/.claude-says/config.json` (owner-only, `0600`) and are merge
   "narrator": {
     "enabled": false,
     "provider": "gemini",
-    "gemini": { "model": "gemini-2.5-flash" }
+    "gemini": { "model": "gemini-2.5-flash" },
+    "ollama": { "model": "llama3.2", "endpoint": "http://localhost:11434" }
   }
 }
 ```

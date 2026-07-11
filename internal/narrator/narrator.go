@@ -37,7 +37,8 @@ var ErrUnknownNarrator = errors.New("unknown narrator provider")
 type factory func(*config.Config) (Narrator, error)
 
 var registry = map[string]factory{
-	"gemini": newGemini,
+	"gemini": newGemini, // cloud (Google) — redacts before egress
+	"ollama": newOllama, // local — nothing leaves the machine
 }
 
 // New builds the narrator named by cfg.Narrator.Provider (default "gemini").

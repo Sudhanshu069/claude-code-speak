@@ -25,7 +25,7 @@ internal/transcript  transcript watcher: fsnotify + 200ms safety poll, offset re
 internal/textproc    fence strip, noise filter, sentence split, markdown clean, content filters (dedupe + filler ON by default, --skip substrings; --verbatim opts out), monotonic seq (block-seam separator; every drop happens BEFORE seq++ so no gaps)
 internal/audio       epoch-fenced ordered queue (queue.go: pause/resume, skip, mute/unmute — all preserve the single-owner drain; muted discards before play so no seq stall) + afplay player (player.go, --volume via afplayArgs)
 internal/tts         Provider interface + macOS `say` (New always returns macOS; a stale cloud-provider config falls back to it)
-internal/narrator    Narrator interface (total Narrate) + gemini
+internal/narrator    Narrator interface (total Narrate) + gemini (cloud; RedactSecrets scrubs secrets before egress) + ollama (local, no egress); registry in narrator.go
 internal/daemon      orchestrator: context-cancellable pipeline, session switch, graceful drain; the text source is the transcript watcher (tests inject via the daemon's buffered `inject` channel)
 internal/tui         Bubble Tea model/update/view; consumes daemon events via channel
 ```

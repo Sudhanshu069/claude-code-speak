@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -23,6 +24,7 @@ import (
 	"github.com/Sudhanshu069/claude-says/internal/config"
 	"github.com/Sudhanshu069/claude-says/internal/daemon"
 	"github.com/Sudhanshu069/claude-says/internal/logx"
+	"github.com/Sudhanshu069/claude-says/internal/narrator"
 	"github.com/Sudhanshu069/claude-says/internal/session"
 	"github.com/Sudhanshu069/claude-says/internal/tts"
 	"github.com/Sudhanshu069/claude-says/internal/tui"
@@ -193,6 +195,22 @@ func bindStartFlags(fs *pflag.FlagSet, o *startOptions) {
 // `--voice <TAB>` cycles the installed macOS voices.
 func registerStartCompletions(cmd *cobra.Command) {
 	_ = cmd.RegisterFlagCompletionFunc("voice", completeVoice)
+	_ = cmd.RegisterFlagCompletionFunc("narrator-provider", completeNarratorProvider)
+}
+
+// completeNarratorProvider offers the registered narrator providers (gemini,
+// ollama) for --narrator-provider completion, prefix-filtered by what's typed.
+func completeNarratorProvider(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	names := narrator.List()
+	sort.Strings(names)
+	prefix := strings.ToLower(toComplete)
+	comps := make([]string, 0, len(names))
+	for _, n := range names {
+		if prefix == "" || strings.HasPrefix(n, prefix) {
+			comps = append(comps, n)
+		}
+	}
+	return comps, cobra.ShellCompDirectiveNoFileComp
 }
 
 // completeVoice offers the installed macOS `say` voices for --voice completion,
